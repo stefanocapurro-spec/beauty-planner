@@ -1,0 +1,110 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── CSS custom properties (theme) ──────────────────────────────────────── */
+:root {
+  /* defaults (Rosa Antico light) – overridden by JS */
+  --c-bg:        #fdf6f7;
+  --c-surface:   #fff9fa;
+  --c-surface-2: #fce8ec;
+  --c-border:    #f5c9d3;
+  --c-primary:   #c06080;
+  --c-primary-2: #a84f6c;
+  --c-accent:    #e891a8;
+  --c-text:      #3d1a24;
+  --c-text-2:    #7a4a58;
+  --c-text-3:    #b07888;
+  --c-success:   #6aaa6a;
+  --c-warning:   #d4942a;
+  --c-danger:    #cc3355;
+}
+
+/* ── Base ────────────────────────────────────────────────────────────────── */
+body {
+  background-color: var(--c-bg);
+  color: var(--c-text);
+  font-family: 'DM Sans', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* ── Scrollbar ───────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--c-border); border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: var(--c-text-3); }
+
+/* ── Utility classes ─────────────────────────────────────────────────────── */
+@layer utilities {
+  .bg-app       { background-color: var(--c-bg); }
+  .bg-surface   { background-color: var(--c-surface); }
+  .bg-surface-2 { background-color: var(--c-surface-2); }
+  .border-theme { border-color: var(--c-border); }
+  .text-primary { color: var(--c-primary); }
+  .text-accent  { color: var(--c-accent); }
+  .text-body    { color: var(--c-text); }
+  .text-muted   { color: var(--c-text-2); }
+  .text-faint   { color: var(--c-text-3); }
+
+  .btn-primary {
+    background-color: var(--c-primary);
+    color: white;
+    transition: background-color 0.2s, transform 0.1s;
+  }
+  .btn-primary:hover  { background-color: var(--c-primary-2); }
+  .btn-primary:active { transform: scale(0.97); }
+
+  .card {
+    background-color: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: 1rem;
+    padding: 1.25rem;
+  }
+
+  .input-base {
+    background-color: var(--c-surface-2);
+    border: 1px solid var(--c-border);
+    color: var(--c-text);
+    border-radius: 0.625rem;
+    padding: 0.5rem 0.875rem;
+    width: 100%;
+    transition: border-color 0.2s;
+    outline: none;
+  }
+  .input-base:focus { border-color: var(--c-primary); }
+  .input-base::placeholder { color: var(--c-text-3); }
+
+  .badge-success { background-color: var(--c-success); color: white; }
+  .badge-warning { background-color: var(--c-warning); color: white; }
+  .badge-danger  { background-color: var(--c-danger);  color: white; }
+  .badge-neutral { background-color: var(--c-surface-2); color: var(--c-text-2); border: 1px solid var(--c-border); }
+}
+
+/* ── PWA / iOS safe-area ─────────────────────────────────────────────────── */
+html, body {
+  /* Evita il rimbalzo elastico di Safari su iOS */
+  overscroll-behavior: none;
+  /* Usa tutta l'altezza disponibile incluse le aree di sistema */
+  height: 100%;
+}
+
+#root {
+  height: 100%;
+}
+
+/* Su iOS Safari, 100vh include la barra URL; 100dvh no */
+@supports (height: 100dvh) {
+  .h-screen { height: 100dvh !important; }
+}
+
+/* Rimuovi l'evidenziazione tap su mobile */
+* { -webkit-tap-highlight-color: transparent; }
+
+/* Evita che il testo venga ingrandito automaticamente su iOS */
+input, select, textarea { font-size: max(16px, 1em); }
+
+/* Nascondi scrollbar su filtri orizzontali */
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }

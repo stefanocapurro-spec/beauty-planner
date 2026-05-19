@@ -17,10 +17,16 @@ export function AuthProvider({ children }) {
       .finally(() => setLoading(false))
   }, [])
 
+  // Registrazione — nessuna verifica email richiesta
   const signUp = useCallback(async (email, password) => {
     const u = await account.create(ID.unique(), email, password)
-    await account.createVerification(`${window.location.origin}/verify`)
-    return u
+    // Login automatico subito dopo la registrazione
+    await account.createEmailPasswordSession(email, password)
+    const me = await account.get()
+    setUser(me)
+    const key = await deriveKey(password, me.$id)
+    setCryptoKey(key)
+    return me
   }, [])
 
   const signIn = useCallback(async (email, password) => {

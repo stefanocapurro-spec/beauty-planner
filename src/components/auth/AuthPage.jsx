@@ -24,7 +24,7 @@ function InputField({ label, type, value, onChange, icon: Icon, autoComplete }) 
         {isPassword && (
           <button
             type="button"
-            onClick={() => setShow((s) => !s)}
+            onClick={() => setShow(s => !s)}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-faint hover:text-muted transition-colors"
           >
             {show ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -37,11 +37,11 @@ function InputField({ label, type, value, onChange, icon: Icon, autoComplete }) 
 
 export function AuthPage() {
   const { signIn, signUp, resetPassword } = useAuth()
-  const [mode, setMode]       = useState('login') // 'login' | 'register' | 'reset'
-  const [email, setEmail]     = useState('')
+  const [mode,    setMode]    = useState('login') // 'login' | 'register' | 'reset'
+  const [email,   setEmail]   = useState('')
   const [password, setPass]   = useState('')
   const [confirm, setConfirm] = useState('')
-  const [busy, setBusy]       = useState(false)
+  const [busy,    setBusy]    = useState(false)
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -51,17 +51,32 @@ export function AuthPage() {
         await signIn(email, password)
         toast.success('Bentornata! ✨')
       } else if (mode === 'register') {
-        if (password !== confirm) { toast.error('Le password non coincidono'); return }
+        if (password !== confirm) {
+          toast.error('Le password non coincidono')
+          return
+        }
+        if (password.length < 8) {
+          toast.error('La password deve essere di almeno 8 caratteri')
+          return
+        }
         await signUp(email, password)
-        toast.success('Controlla la tua email per confermare l\'account 📧')
-        setMode('login')
+        toast.success('Account creato! Benvenuta 🌸')
       } else {
         await resetPassword(email)
-        toast.success('Email di reset inviata! Controlla la casella 📧')
+        toast.success('Se l\'email esiste riceverai il link di reset 📧')
         setMode('login')
       }
     } catch (err) {
-      toast.error(err.message || 'Errore, riprova')
+      // Messaggi di errore in italiano
+      const msg = err.message || ''
+      if (msg.includes('Invalid credentials'))
+        toast.error('Email o password non corretti')
+      else if (msg.includes('already exists') || msg.includes('user_already_exists'))
+        toast.error('Email già registrata — prova ad accedere')
+      else if (msg.includes('Invalid password'))
+        toast.error('Password troppo corta (minimo 8 caratteri)')
+      else
+        toast.error(msg || 'Errore, riprova')
     } finally {
       setBusy(false)
     }
@@ -69,7 +84,7 @@ export function AuthPage() {
 
   return (
     <div className="min-h-screen bg-app flex items-center justify-center p-4">
-      {/* Background decoration */}
+      {/* Decorazioni sfondo */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-32 -right-32 w-96 h-96 rounded-full opacity-10"
              style={{ background: 'radial-gradient(circle, var(--c-accent), transparent)' }} />
@@ -100,29 +115,36 @@ export function AuthPage() {
               label="Email"
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={e => setEmail(e.target.value)}
               icon={Mail}
               autoComplete="email"
             />
+
             {mode !== 'reset' && (
               <InputField
                 label="Password"
                 type="password"
                 value={password}
-                onChange={(e) => setPass(e.target.value)}
+                onChange={e => setPass(e.target.value)}
                 icon={Lock}
                 autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
               />
             )}
+
             {mode === 'register' && (
-              <InputField
-                label="Conferma password"
-                type="password"
-                value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
-                icon={Lock}
-                autoComplete="new-password"
-              />
+              <>
+                <InputField
+                  label="Conferma password"
+                  type="password"
+                  value={confirm}
+                  onChange={e => setConfirm(e.target.value)}
+                  icon={Lock}
+                  autoComplete="new-password"
+                />
+                <p className="text-xs text-faint -mt-2">
+                  Minimo 8 caratteri
+                </p>
+              </>
             )}
 
             <button
@@ -134,9 +156,9 @@ export function AuthPage() {
                 <span className="animate-pulse-soft">Attendere…</span>
               ) : (
                 <>
-                  {mode === 'login'    && <><LogIn size={16} /> Accedi</>}
+                  {mode === 'login'    && <><LogIn size={16} />    Accedi</>}
                   {mode === 'register' && <><UserPlus size={16} /> Registrati</>}
-                  {mode === 'reset'    && <><Mail size={16} /> Invia email</>}
+                  {mode === 'reset'    && <><Mail size={16} />     Invia link</>}
                 </>
               )}
             </button>
@@ -145,16 +167,19 @@ export function AuthPage() {
           <div className="mt-5 flex flex-col gap-2 text-center text-sm">
             {mode === 'login' && (
               <>
-                <button onClick={() => setMode('register')} className="text-primary hover:underline">
+                <button onClick={() => { setMode('register'); setPass(''); setConfirm('') }}
+                  className="text-primary hover:underline">
                   Non hai un account? Registrati
                 </button>
-                <button onClick={() => setMode('reset')} className="text-faint hover:text-muted">
+                <button onClick={() => setMode('reset')}
+                  className="text-faint hover:text-muted text-xs">
                   Password dimenticata?
                 </button>
               </>
             )}
             {mode !== 'login' && (
-              <button onClick={() => setMode('login')} className="text-primary hover:underline">
+              <button onClick={() => { setMode('login'); setPass(''); setConfirm('') }}
+                className="text-primary hover:underline">
                 ← Torna al login
               </button>
             )}

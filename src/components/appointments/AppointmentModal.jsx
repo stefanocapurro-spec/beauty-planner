@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
-import { User, Phone, Calendar, MessageSquare, CheckCircle } from 'lucide-react'
+import { User, Phone, Calendar, MessageSquare, CheckCircle, Plus, X } from 'lucide-react'
 import { format } from 'date-fns'
 import { useServices } from '../../hooks/useServices'
 import { Modal, ModalHeader, Button } from '../ui'
+import { SERVICE_CATEGORIES, CATEGORY_ICONS } from '../../data/services'
+import toast from 'react-hot-toast'
 
 const PAYMENT_OPTIONS = [
   { value: 'pending',  label: 'Da pagare',             emoji: '⏳' },
@@ -11,20 +13,99 @@ const PAYMENT_OPTIONS = [
   { value: 'advance',  label: 'Pagamento anticipato',  emoji: '💰' },
 ]
 
-function Field({ label, icon: Icon, children }) {
+const EMOJI_QUICK = ['🌸','💅','🧖‍♀️','✨','💆‍♀️','💄','🦵','💪','🦶','💎','🎀','🌺']
+
+function Field({ label, children }) {
   return (
     <div>
-      <label className="text-xs font-medium text-muted mb-1 flex items-center gap-1">
-        {Icon && <Icon size={12} />} {label}
-      </label>
+      <label className="text-xs font-medium text-muted mb-1 block">{label}</label>
       {children}
     </div>
   )
 }
 
+// ── Mini-form aggiunta nuova prestazione inline ───────────────────────────
+function AddServiceInline({ onAdd, onCancel }) {
+  const [icon,     setIcon]     = useState('🌸')
+  const [category, setCategory] = useState('Altro')
+  const [name,     setName]     = useState('')
+  const [price,    setPrice]    = useState('')
+  const [busy,     setBusy]     = useState(false)
+
+  async function handleAdd() {
+    if (!name.trim() || !price) { toast.error('Inserisci nome e prezzo'); return }
+    setBusy(true)
+    try {
+      await onAdd({ icon, category, name: name.trim(), price: Number(price) })
+      toast.success('Prestazione aggiunta! 🌸')
+    } catch (e) {
+      toast.error(e.message || 'Errore')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="rounded-xl border-2 p-3 animate-fade-in"
+         style={{ borderColor: 'var(--c-primary)', background: 'var(--c-surface-2)' }}>
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs font-semibold text-primary">✨ Nuova prestazione</p>
+        <button type="button" onClick={onCancel} className="text-faint hover:text-muted">
+          <X size={14} />
+        </button>
+      </div>
+
+      {/* Emoji rapide */}
+      <div className="flex flex-wrap gap-1 mb-3">
+        {EMOJI_QUICK.map(e => (
+          <button key={e} type="button" onClick={() => setIcon(e)}
+            className={`text-base p-1 rounded-lg transition-all ${icon === e ? 'ring-2 bg-surface' : 'hover:bg-surface'}`}
+            style={{ ringColor: 'var(--c-primary)' }}>
+            {e}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 mb-2">
+        <div>
+          <label className="text-xs text-muted mb-1 block">Categoria</label>
+          <select className="input-base text-xs" value={category} onChange={e => setCategory(e.target.value)}>
+            {SERVICE_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs text-muted mb-1 block">Prezzo €</label>
+          <input className="input-base text-xs" type="number" min="0" step="0.5"
+            value={price} onChange={e => setPrice(e.target.value)} placeholder="0" />
+        </div>
+      </div>
+
+      <div className="mb-3">
+        <label className="text-xs text-muted mb-1 block">Nome prestazione</label>
+        <input className="input-base text-xs" value={name}
+          onChange={e => setName(e.target.value)}
+          placeholder="es. Trattamento viso completo" />
+      </div>
+
+      <div className="flex gap-2">
+        <button type="button" onClick={onCancel}
+          className="flex-1 py-1.5 rounded-xl border border-theme text-xs text-muted hover:bg-surface transition-colors">
+          Annulla
+        </button>
+        <button type="button" onClick={handleAdd} disabled={busy}
+          className="flex-1 btn-primary py-1.5 rounded-xl text-xs font-medium disabled:opacity-60">
+          {busy ? '…' : 'Aggiungi'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Modale principale ─────────────────────────────────────────────────────
 export function AppointmentModal({ open, onClose, onSave, initial }) {
-  const { services } = useServices()
+  const { services, addService } = useServices()
   const isEdit = !!initial?.id
+  const [showAddService, setShowAddService] = useState(false)
 
   const blank = {
     client_name: '', client_phone: '',
@@ -33,12 +114,12 @@ export function AppointmentModal({ open, onClose, onSave, initial }) {
     notes: '', payment_status: 'pending',
     advance_amount: '', whatsapp_reminder: false,
   }
-
   const [form, setForm] = useState(blank)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     if (open) {
+      setShowAddService(false)
       setForm(initial ? {
         ...blank, ...initial,
         appointment_date: initial.appointment_date
@@ -48,12 +129,19 @@ export function AppointmentModal({ open, onClose, onSave, initial }) {
     }
   }, [open, initial])
 
-  const field = (key) => (e) =>
-    setForm((f) => ({ ...f, [key]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }))
+  const field = key => e =>
+    setForm(f => ({ ...f, [key]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }))
 
   function selectService(id) {
-    const svc = services.find((s) => s.id === id)
-    setForm((f) => ({ ...f, service_id: id, service_name: svc?.name ?? '', service_price: svc?.price ?? '' }))
+    const svc = services.find(s => s.id === id)
+    setForm(f => ({ ...f, service_id: id, service_name: svc?.name ?? '', service_price: svc?.price ?? '' }))
+  }
+
+  async function handleAddService(data) {
+    const newSvc = await addService(data)
+    // Seleziona automaticamente la prestazione appena aggiunta
+    setForm(f => ({ ...f, service_id: newSvc.id, service_name: newSvc.name, service_price: newSvc.price }))
+    setShowAddService(false)
   }
 
   async function handleSave(e) {
@@ -63,6 +151,7 @@ export function AppointmentModal({ open, onClose, onSave, initial }) {
     finally { setBusy(false) }
   }
 
+  // Raggruppa per categoria
   const grouped = services.reduce((acc, s) => {
     ;(acc[s.category] = acc[s.category] || []).push(s)
     return acc
@@ -73,60 +162,130 @@ export function AppointmentModal({ open, onClose, onSave, initial }) {
 
   return (
     <Modal open={open} onClose={onClose}>
-      <ModalHeader title={isEdit ? '✏️ Modifica appuntamento' : '✨ Nuovo appuntamento'} onClose={onClose} />
+      <ModalHeader
+        title={isEdit ? '✏️ Modifica appuntamento' : '✨ Nuovo appuntamento'}
+        onClose={onClose}
+      />
       <form onSubmit={handleSave} className="p-5 flex flex-col gap-4">
+
+        {/* Cliente */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="Nome cliente" icon={User}>
-            <input className="input-base" value={form.client_name} onChange={field('client_name')} placeholder="Nome e cognome" required />
+          <Field label="👤 Nome cliente">
+            <input className="input-base" value={form.client_name}
+              onChange={field('client_name')} placeholder="Nome e cognome" required />
           </Field>
-          <Field label="Telefono" icon={Phone}>
-            <input className="input-base" type="tel" value={form.client_phone} onChange={field('client_phone')} placeholder="+39 320 …" />
+          <Field label="📞 Telefono">
+            <input className="input-base" type="tel" value={form.client_phone}
+              onChange={field('client_phone')} placeholder="+39 320 …" />
           </Field>
         </div>
-        <Field label="Data e ora" icon={Calendar}>
-          <input className="input-base" type="datetime-local" value={form.appointment_date} onChange={field('appointment_date')} required />
+
+        {/* Data e ora */}
+        <Field label="📅 Data e ora">
+          <input className="input-base" type="datetime-local"
+            value={form.appointment_date} onChange={field('appointment_date')} required />
         </Field>
-        <Field label="💆‍♀️ Prestazione">
-          <select className="input-base" value={form.service_id} onChange={(e) => selectService(e.target.value)} required>
-            <option value="">Seleziona una prestazione…</option>
-            {Object.entries(grouped).map(([cat, svcs]) => (
-              <optgroup key={cat} label={cat}>
-                {svcs.map((s) => <option key={s.id} value={s.id}>{s.icon} {s.name} — €{s.price}</option>)}
-              </optgroup>
-            ))}
-          </select>
-          {form.service_price && <p className="text-xs text-primary mt-1">Prezzo: €{form.service_price}</p>}
+
+        {/* Prestazione + pulsante aggiungi */}
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs font-medium text-muted">💆‍♀️ Prestazione</label>
+            {!showAddService && (
+              <button type="button" onClick={() => setShowAddService(true)}
+                className="flex items-center gap-1 text-xs font-medium transition-colors hover:opacity-80"
+                style={{ color: 'var(--c-primary)' }}>
+                <Plus size={13} /> Aggiungi nuova prestazione all'elenco
+              </button>
+            )}
+          </div>
+
+          {/* Dropdown prestazioni esistenti */}
+          {!showAddService && (
+            <>
+              <select className="input-base" value={form.service_id}
+                onChange={e => selectService(e.target.value)} required>
+                <option value="">Seleziona una prestazione…</option>
+                {Object.entries(grouped).map(([cat, svcs]) => (
+                  <optgroup key={cat} label={`${CATEGORY_ICONS[cat] || '🌸'} ${cat}`}>
+                    {svcs.map(s => (
+                      <option key={s.id} value={s.id}>
+                        {s.icon} {s.name} — €{s.price}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+              {form.service_price !== '' && (
+                <p className="text-xs mt-1" style={{ color: 'var(--c-primary)' }}>
+                  Prezzo: €{form.service_price}
+                </p>
+              )}
+            </>
+          )}
+
+          {/* Form aggiunta nuova prestazione */}
+          {showAddService && (
+            <AddServiceInline
+              onAdd={handleAddService}
+              onCancel={() => setShowAddService(false)}
+            />
+          )}
+        </div>
+
+        {/* Note */}
+        <Field label="📝 Note (opzionale)">
+          <textarea className="input-base resize-none" rows={2}
+            value={form.notes} onChange={field('notes')}
+            placeholder="Preferenze, allergie, richieste speciali…" />
         </Field>
-        <Field label="Note (opzionale)" icon={MessageSquare}>
-          <textarea className="input-base resize-none" rows={2} value={form.notes} onChange={field('notes')} placeholder="Preferenze, allergie, richieste speciali…" />
-        </Field>
+
+        {/* Stato pagamento */}
         <div>
           <p className="text-xs font-medium text-muted mb-2">💳 Pagamento</p>
           <div className="grid grid-cols-2 gap-2">
-            {PAYMENT_OPTIONS.map((opt) => (
-              <label key={opt.value} className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-all ${form.payment_status === opt.value ? 'border-[var(--c-primary)] bg-surface-2' : 'border-theme hover:border-[var(--c-accent)]'}`}>
-                <input type="radio" name="payment_status" value={opt.value} checked={form.payment_status === opt.value} onChange={field('payment_status')} className="sr-only" />
+            {PAYMENT_OPTIONS.map(opt => (
+              <label key={opt.value}
+                className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-all ${
+                  form.payment_status === opt.value
+                    ? 'border-[var(--c-primary)] bg-surface-2'
+                    : 'border-theme hover:border-[var(--c-accent)]'
+                }`}>
+                <input type="radio" name="payment_status" value={opt.value}
+                  checked={form.payment_status === opt.value}
+                  onChange={field('payment_status')} className="sr-only" />
                 <span>{opt.emoji}</span>
                 <span className="text-xs font-medium text-body">{opt.label}</span>
               </label>
             ))}
           </div>
         </div>
+
+        {/* Importo anticipo */}
         {form.payment_status === 'advance' && (
           <Field label="💰 Importo anticipato (€)">
-            <input className="input-base" type="number" min="0" step="0.01" value={form.advance_amount} onChange={field('advance_amount')} placeholder="0.00" />
+            <input className="input-base" type="number" min="0" step="0.01"
+              value={form.advance_amount} onChange={field('advance_amount')} placeholder="0.00" />
             {residuo !== null && (
-              <p className="text-xs mt-1" style={{ color: residuo <= 0 ? 'var(--c-success)' : 'var(--c-warning)' }}>
-                {residuo > 0 ? `Residuo da saldare: €${residuo.toFixed(2)}` : `Saldato${residuo < 0 ? ` — Credito: €${Math.abs(residuo).toFixed(2)}` : ''}`}
+              <p className="text-xs mt-1"
+                 style={{ color: residuo <= 0 ? 'var(--c-success)' : 'var(--c-warning)' }}>
+                {residuo > 0
+                  ? `Residuo da saldare: €${residuo.toFixed(2)}`
+                  : `Saldato${residuo < 0 ? ` — Credito: €${Math.abs(residuo).toFixed(2)}` : ''}`}
               </p>
             )}
           </Field>
         )}
+
+        {/* WhatsApp */}
         <label className="flex items-center gap-3 p-3 rounded-xl border border-theme hover:border-[var(--c-accent)] cursor-pointer transition-all">
-          <input type="checkbox" checked={form.whatsapp_reminder} onChange={field('whatsapp_reminder')} className="accent-[var(--c-primary)] w-4 h-4" />
+          <input type="checkbox" checked={form.whatsapp_reminder}
+            onChange={field('whatsapp_reminder')}
+            className="accent-[var(--c-primary)] w-4 h-4" />
           <span className="text-sm text-body">📱 Invia promemoria WhatsApp</span>
         </label>
-        <div className="flex gap-3 mt-2">
+
+        {/* Azioni */}
+        <div className="flex gap-3 mt-1">
           <Button variant="outline" onClick={onClose} className="flex-1">Annulla</Button>
           <Button type="submit" disabled={busy} className="flex-1">
             {busy ? '…' : <><CheckCircle size={15} /> Salva</>}

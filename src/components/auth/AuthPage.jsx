@@ -1,20 +1,21 @@
 import { useState } from 'react'
 import { useAuth } from '../../hooks/useAuth'
 import toast from 'react-hot-toast'
-import { Eye, EyeOff, Sparkles, Mail, Lock, UserPlus, LogIn } from 'lucide-react'
+import { Eye, EyeOff, Sparkles, Mail, Lock, UserPlus, LogIn, AlertCircle } from 'lucide-react'
 
 function InputField({ label, type, value, onChange, icon: Icon, autoComplete }) {
   const [show, setShow] = useState(false)
   const isPassword = type === 'password'
   return (
-    <div className="flex flex-col gap-1">
-      <label className="text-sm font-medium text-muted">{label}</label>
+    <div className="flex flex-col gap-1.5">
+      <label className="text-sm font-medium text-muted flex items-center gap-1.5">
+        <Icon size={14} className="text-faint flex-shrink-0" />
+        {label}
+      </label>
       <div className="relative">
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-faint">
-          <Icon size={16} />
-        </span>
         <input
-          className="input-base pl-9 pr-10"
+          className="input-base"
+          style={{ paddingRight: isPassword ? '2.75rem' : undefined }}
           type={isPassword && show ? 'text' : type}
           value={value}
           onChange={onChange}
@@ -25,6 +26,8 @@ function InputField({ label, type, value, onChange, icon: Icon, autoComplete }) 
           <button
             type="button"
             onClick={() => setShow(s => !s)}
+            tabIndex={-1}
+            aria-label={show ? 'Nascondi' : 'Mostra'}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-faint hover:text-muted transition-colors"
           >
             {show ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -35,48 +38,73 @@ function InputField({ label, type, value, onChange, icon: Icon, autoComplete }) 
   )
 }
 
+function ErrorBox({ message }) {
+  if (!message) return null
+  return (
+    <div className="flex items-start gap-2 rounded-xl p-3 text-sm"
+         style={{ background: 'var(--c-danger)15', border: '1px solid var(--c-danger)', color: 'var(--c-danger)' }}>
+      <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
+      <span>{message}</span>
+    </div>
+  )
+}
+
+function parseError(err) {
+  const msg = err?.message || err?.toString() || ''
+  const code = err?.code || 0
+  console.error('[Auth error]', { code, msg, err })
+
+  if (code === 0 || msg.toLowerCase().includes('fetch') || msg.toLowerCase().includes('network') || msg.toLowerCase().includes('cors'))
+    return 'Impossibile raggiungere il server. Controlla che localhost sia autorizzato in Appwrite Console → Overview → Platforms.'
+  if (code === 401 || msg.includes('Invalid credentials'))
+    return 'Email o password non corretti.'
+  if (code === 409 || msg.includes('already exists') || msg.includes('user_already_exists'))
+    return 'Email già registrata — prova ad accedere.'
+  if (msg.includes('password') && (msg.includes('least') || msg.includes('short') || msg.includes('Invalid')))
+    return 'Password troppo corta (minimo 8 caratteri).'
+  if (code === 429)
+    return 'Troppi tentativi. Aspetta qualche minuto e riprova.'
+  if (msg)
+    return `Errore: ${msg}`
+  return 'Errore sconosciuto. Controlla la console del browser (F12).'
+}
+
 export function AuthPage() {
   const { signIn, signUp, resetPassword } = useAuth()
-  const [mode,    setMode]    = useState('login') // 'login' | 'register' | 'reset'
-  const [email,   setEmail]   = useState('')
+  const [mode,     setMode]   = useState('login')
+  const [email,    setEmail]  = useState('')
   const [password, setPass]   = useState('')
-  const [confirm, setConfirm] = useState('')
-  const [busy,    setBusy]    = useState(false)
+  const [confirm,  setConfirm]= useState('')
+  const [busy,     setBusy]   = useState(false)
+  const [error,    setError]  = useState('')
+
+  function resetFields() { setPass(''); setConfirm(''); setError('') }
+  function switchMode(m) { setMode(m); resetFields() }
 
   async function handleSubmit(e) {
     e.preventDefault()
+    setError('')
+
+    if (mode === 'register') {
+      if (password !== confirm) { setError('Le password non coincidono.'); return }
+      if (password.length < 8)  { setError('La password deve essere di almeno 8 caratteri.'); return }
+    }
+
     setBusy(true)
     try {
       if (mode === 'login') {
         await signIn(email, password)
         toast.success('Bentornata! ✨')
       } else if (mode === 'register') {
-        if (password !== confirm) {
-          toast.error('Le password non coincidono')
-          return
-        }
-        if (password.length < 8) {
-          toast.error('La password deve essere di almeno 8 caratteri')
-          return
-        }
         await signUp(email, password)
         toast.success('Account creato! Benvenuta 🌸')
       } else {
         await resetPassword(email)
-        toast.success('Se l\'email esiste riceverai il link di reset 📧')
-        setMode('login')
+        toast.success('Link di reset inviato (controlla anche lo spam) 📧')
+        switchMode('login')
       }
     } catch (err) {
-      // Messaggi di errore in italiano
-      const msg = err.message || ''
-      if (msg.includes('Invalid credentials'))
-        toast.error('Email o password non corretti')
-      else if (msg.includes('already exists') || msg.includes('user_already_exists'))
-        toast.error('Email già registrata — prova ad accedere')
-      else if (msg.includes('Invalid password'))
-        toast.error('Password troppo corta (minimo 8 caratteri)')
-      else
-        toast.error(msg || 'Errore, riprova')
+      setError(parseError(err))
     } finally {
       setBusy(false)
     }
@@ -84,7 +112,6 @@ export function AuthPage() {
 
   return (
     <div className="min-h-screen bg-app flex items-center justify-center p-4">
-      {/* Decorazioni sfondo */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-32 -right-32 w-96 h-96 rounded-full opacity-10"
              style={{ background: 'radial-gradient(circle, var(--c-accent), transparent)' }} />
@@ -93,7 +120,6 @@ export function AuthPage() {
       </div>
 
       <div className="w-full max-w-sm animate-slide-up relative">
-        {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-4 shadow-lg"
                style={{ background: 'var(--c-primary)' }}>
@@ -111,54 +137,33 @@ export function AuthPage() {
           </h2>
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            <InputField
-              label="Email"
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              icon={Mail}
-              autoComplete="email"
-            />
+            <InputField label="Email" type="email" value={email}
+              onChange={e => setEmail(e.target.value)} icon={Mail} autoComplete="email" />
 
             {mode !== 'reset' && (
-              <InputField
-                label="Password"
-                type="password"
-                value={password}
-                onChange={e => setPass(e.target.value)}
-                icon={Lock}
-                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-              />
+              <InputField label="Password" type="password" value={password}
+                onChange={e => setPass(e.target.value)} icon={Lock}
+                autoComplete={mode === 'login' ? 'current-password' : 'new-password'} />
             )}
 
             {mode === 'register' && (
               <>
-                <InputField
-                  label="Conferma password"
-                  type="password"
-                  value={confirm}
-                  onChange={e => setConfirm(e.target.value)}
-                  icon={Lock}
-                  autoComplete="new-password"
-                />
-                <p className="text-xs text-faint -mt-2">
-                  Minimo 8 caratteri
-                </p>
+                <InputField label="Conferma password" type="password" value={confirm}
+                  onChange={e => setConfirm(e.target.value)} icon={Lock} autoComplete="new-password" />
+                <p className="text-xs text-faint -mt-1">Minimo 8 caratteri</p>
               </>
             )}
 
-            <button
-              type="submit"
-              disabled={busy}
-              className="btn-primary rounded-xl py-2.5 font-medium flex items-center justify-center gap-2 mt-2 disabled:opacity-60"
-            >
-              {busy ? (
-                <span className="animate-pulse-soft">Attendere…</span>
-              ) : (
+            {/* Errore inline */}
+            <ErrorBox message={error} />
+
+            <button type="submit" disabled={busy}
+              className="btn-primary rounded-xl py-3 font-medium flex items-center justify-center gap-2 disabled:opacity-60">
+              {busy ? <span className="animate-pulse-soft">Attendere…</span> : (
                 <>
-                  {mode === 'login'    && <><LogIn size={16} />    Accedi</>}
+                  {mode === 'login'    && <><LogIn    size={16} /> Accedi</>}
                   {mode === 'register' && <><UserPlus size={16} /> Registrati</>}
-                  {mode === 'reset'    && <><Mail size={16} />     Invia link</>}
+                  {mode === 'reset'    && <><Mail     size={16} /> Invia link</>}
                 </>
               )}
             </button>
@@ -167,19 +172,16 @@ export function AuthPage() {
           <div className="mt-5 flex flex-col gap-2 text-center text-sm">
             {mode === 'login' && (
               <>
-                <button onClick={() => { setMode('register'); setPass(''); setConfirm('') }}
-                  className="text-primary hover:underline">
+                <button onClick={() => switchMode('register')} className="text-primary hover:underline">
                   Non hai un account? Registrati
                 </button>
-                <button onClick={() => setMode('reset')}
-                  className="text-faint hover:text-muted text-xs">
+                <button onClick={() => switchMode('reset')} className="text-faint hover:text-muted text-xs">
                   Password dimenticata?
                 </button>
               </>
             )}
             {mode !== 'login' && (
-              <button onClick={() => { setMode('login'); setPass(''); setConfirm('') }}
-                className="text-primary hover:underline">
+              <button onClick={() => switchMode('login')} className="text-primary hover:underline">
                 ← Torna al login
               </button>
             )}

@@ -18,7 +18,8 @@ async function decryptService(doc, cryptoKey) {
   }
 }
 
-const byCategory = (a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name)
+const byCategory = (a, b) =>
+  a.category.localeCompare(b.category) || a.name.localeCompare(b.name)
 
 export function useServices() {
   const { user, cryptoKey } = useAuth()
@@ -35,12 +36,13 @@ export function useServices() {
         Query.limit(200),
       ])
 
+      // Seed solo se questo utente non ha ancora servizi
       if (res.total === 0 && !seeded.current) {
         seeded.current = true
-        // Inserisci i default uno alla volta (ignora conflitti)
         for (const s of DEFAULT_SERVICES) {
           try {
-            await databases.createDocument(DB_ID, COL.SERVICES, s.id, {
+            // ID.unique() → nessun conflitto tra utenti diversi
+            await databases.createDocument(DB_ID, COL.SERVICES, ID.unique(), {
               user_id:  user.$id,
               icon:     s.icon,
               category: s.category,
@@ -48,7 +50,7 @@ export function useServices() {
               price:    await encrypt(String(s.price), cryptoKey),
             }, ownerPerms(user.$id))
           } catch (e) {
-            if (e.code !== 409) console.warn('Seed skip:', s.name, e.message)
+            console.warn('Seed skip:', s.name, e.message)
           }
         }
         // Rileggi dopo il seed
@@ -75,8 +77,7 @@ export function useServices() {
   const addService = useCallback(async ({ icon, category, name, price }) => {
     const doc = await databases.createDocument(DB_ID, COL.SERVICES, ID.unique(), {
       user_id:  user.$id,
-      icon,
-      category,
+      icon, category,
       name:  await encrypt(name, cryptoKey),
       price: await encrypt(String(Number(price)), cryptoKey),
     }, ownerPerms(user.$id))
@@ -87,8 +88,7 @@ export function useServices() {
 
   const updateService = useCallback(async (id, { icon, category, name, price }) => {
     await databases.updateDocument(DB_ID, COL.SERVICES, id, {
-      icon,
-      category,
+      icon, category,
       name:  await encrypt(name, cryptoKey),
       price: await encrypt(String(Number(price)), cryptoKey),
     })

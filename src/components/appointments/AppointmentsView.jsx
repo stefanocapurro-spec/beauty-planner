@@ -3,6 +3,8 @@ import { Plus, Search } from 'lucide-react'
 import { format, isToday, isTomorrow, isThisWeek, parseISO, isPast } from 'date-fns'
 import { it } from 'date-fns/locale'
 import { useAppointments } from '../../hooks/useAppointments'
+import { createPaymentRecord } from '../../hooks/usePayments'
+import { useAuth } from '../../hooks/useAuth'
 import { AppointmentCard } from './AppointmentCard'
 import { AppointmentModal } from './AppointmentModal'
 import { RescheduleModal } from './RescheduleModal'
@@ -28,6 +30,7 @@ function groupLabel(dateKey) {
 }
 
 export function AppointmentsView() {
+  const { user, cryptoKey }  = useAuth()
   const { appointments, loading, add, update, remove } = useAppointments()
   const [modalOpen,      setModalOpen]      = useState(false)
   const [rescheduleOpen, setRescheduleOpen] = useState(false)
@@ -38,9 +41,7 @@ export function AppointmentsView() {
 
   // ── Filtraggio ──────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
-    const now = new Date()
     let list = [...appointments]
-
     if (search.trim()) {
       const q = search.toLowerCase()
       list = list.filter(a =>
@@ -49,44 +50,78 @@ export function AppointmentsView() {
         a.client_phone?.includes(q)
       )
     }
-
     switch (filter) {
-      case 'Oggi':           list = list.filter(a => isToday(new Date(a.appointment_date))); break
-      case 'Domani':         list = list.filter(a => isTomorrow(new Date(a.appointment_date))); break
+      case 'Oggi':             list = list.filter(a => isToday(new Date(a.appointment_date))); break
+      case 'Domani':           list = list.filter(a => isTomorrow(new Date(a.appointment_date))); break
       case 'Questa settimana': list = list.filter(a => isThisWeek(new Date(a.appointment_date), { locale: it })); break
-      case 'Passati':        list = list.filter(a => isPast(new Date(a.appointment_date)) && !isToday(new Date(a.appointment_date))); break
-      case 'Prossimi':       list = list.filter(a => !isPast(new Date(a.appointment_date)) || isToday(new Date(a.appointment_date))); break
-      default: break // Tutti
+      case 'Passati':          list = list.filter(a => isPast(new Date(a.appointment_date)) && !isToday(new Date(a.appointment_date))); break
+      case 'Prossimi':         list = list.filter(a => !isPast(new Date(a.appointment_date)) || isToday(new Date(a.appointment_date))); break
+      default: break
     }
-
     return list.sort((a, b) => new Date(a.appointment_date) - new Date(b.appointment_date))
   }, [appointments, filter, search])
 
-  const grouped  = useMemo(() => groupByDate(filtered), [filtered])
+  const grouped    = useMemo(() => groupByDate(filtered), [filtered])
   const todayCount = appointments.filter(a => isToday(new Date(a.appointment_date))).length
 
-  // ── Salva (nuovo o modifica) ────────────────────────────────────────────
+  // ── Registra pagamento nella collezione payments ────────────────────────
+  async function registerPayment(appt, type, amount) {
+    try {
+      await createPaymentRecord({
+        user, cryptoKey,
+        appointment: appt,
+        type,
+        amount,
+        notes: '',
+      })
+    } catch (e) {
+      console.error('Errore registrazione pagamento:', e)
+    }
+  }
+
+  // ── Salva appuntamento (nuovo o modifica) ───────────────────────────────
   async function handleSave(form) {
     try {
       const payload = {
         client_name:       form.client_name,
-        client_phone:      form.client_phone || '',
+        client_phone:      form.client_phone      || '',
         appointment_date:  new Date(form.appointment_date).toISOString(),
-        service_id:        form.service_id   || null,
+        service_id:        form.service_id        || null,
         service_name:      form.service_name,
         service_price:     form.service_price != null ? String(form.service_price) : null,
-        notes:             form.notes        || '',
+        notes:             form.notes             || '',
         payment_status:    form.payment_status,
-        advance_amount:    form.advance_amount ? String(form.advance_amount) : null,
+        advance_amount:    form.advance_amount    ? String(form.advance_amount) : null,
         whatsapp_reminder: form.whatsapp_reminder,
       }
+
       if (editing?.id) {
-        await update(editing.id, payload)
+        const updated = await update(editing.id, payload)
         toast.success('Appuntamento aggiornato ✨')
+
+        // Registra pagamento se lo stato è cambiato
+        const prevStatus = editing.payment_status
+        const newStatus  = form.payment_status
+        if (prevStatus !== newStatus) {
+          const amount = Number(form.service_price || 0)
+          if (newStatus === 'paid')     await registerPayment({ ...payload, id: editing.id }, 'paid',     amount)
+          if (newStatus === 'deferred') await registerPayment({ ...payload, id: editing.id }, 'deferred', amount)
+          if (newStatus === 'advance')  await registerPayment({ ...payload, id: editing.id }, 'advance',  Number(form.advance_amount || 0))
+        }
       } else {
         const saved = await add(payload)
         toast.success('Appuntamento salvato! 🌸')
         if (form.whatsapp_reminder && saved) sendWhatsAppReminder(saved)
+
+        // Registra subito se già pagato o con anticipo
+        if (saved) {
+          if (form.payment_status === 'paid')
+            await registerPayment(saved, 'paid', Number(form.service_price || 0))
+          if (form.payment_status === 'advance')
+            await registerPayment(saved, 'advance', Number(form.advance_amount || 0))
+          if (form.payment_status === 'deferred')
+            await registerPayment(saved, 'deferred', Number(form.service_price || 0))
+        }
       }
       setEditing(null)
     } catch (e) {
@@ -101,41 +136,37 @@ export function AppointmentsView() {
       await update(id, changes)
       toast.success('Appuntamento spostato 📅')
       setRescheduling(null)
-    } catch (e) {
-      toast.error(e.message)
-    }
+    } catch (e) { toast.error(e.message) }
   }
 
-  // ── Annulla appuntamento (non elimina, cambia stato) ────────────────────
-  async function handleCancel(appt) {
-    if (!confirm(`Annullare l'appuntamento di ${appt.client_name}?\nL'appuntamento rimarrà visibile come annullato.`)) return
-    try {
-      await update(appt.id, { payment_status: 'cancelled' })
-      toast.success('Appuntamento annullato')
-    } catch (e) {
-      toast.error(e.message)
-    }
-  }
-
-  // ── Segna pagato ────────────────────────────────────────────────────────
+  // ── Segna pagato (click rapido dalla card) ──────────────────────────────
   async function handleMarkPaid(appt) {
     try {
       await update(appt.id, { payment_status: 'paid' })
+      await registerPayment(appt, 'paid', Number(appt.service_price || 0))
       toast.success('Segnato come pagato ✅')
-    } catch (e) {
-      toast.error(e.message)
-    }
+    } catch (e) { toast.error(e.message) }
+  }
+
+  // ── Annulla appuntamento ────────────────────────────────────────────────
+  async function handleCancel(appt) {
+    if (!confirm(`Annullare l'appuntamento di ${appt.client_name}?\nResterà visibile come annullato.`)) return
+    try {
+      await update(appt.id, { payment_status: 'cancelled' })
+      await registerPayment(appt, 'cancelled', 0)
+      toast.success('Appuntamento annullato')
+    } catch (e) { toast.error(e.message) }
   }
 
   // ── Elimina definitivamente ─────────────────────────────────────────────
   async function handleDelete(id) {
-    if (!confirm('Eliminare definitivamente questo appuntamento? L\'operazione non è reversibile.')) return
+    if (!confirm('Eliminare definitivamente? L\'operazione non è reversibile.')) return
     await remove(id)
     toast.success('Appuntamento eliminato')
   }
 
-  function openEdit(appt)  { setEditing(appt); setModalOpen(true) }
-  function openNew()       { setEditing(null); setModalOpen(true) }
+  function openEdit(appt)       { setEditing(appt);     setModalOpen(true) }
+  function openNew()            { setEditing(null);     setModalOpen(true) }
   function openReschedule(appt) { setRescheduling(appt); setRescheduleOpen(true) }
 
   return (
@@ -151,14 +182,12 @@ export function AppointmentsView() {
         }
       />
 
-      {/* Ricerca */}
       <div className="relative mb-3">
         <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
         <input className="input-base pl-9" placeholder="Cerca cliente, prestazione…"
           value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
-      {/* Filtri */}
       <div className="flex gap-2 overflow-x-auto pb-1 mb-4 scrollbar-hide">
         {FILTERS.map(f => (
           <button key={f} onClick={() => setFilter(f)}
@@ -170,14 +199,13 @@ export function AppointmentsView() {
         ))}
       </div>
 
-      {/* Lista */}
       {loading ? (
         <div className="flex-1 flex items-center justify-center">
           <p className="text-muted animate-pulse-soft">Caricamento…</p>
         </div>
       ) : Object.keys(grouped).length === 0 ? (
         <EmptyState emoji="🌸" title="Nessun appuntamento"
-          subtitle={filter === 'Prossimi' ? 'Non ci sono appuntamenti in programma' : 'Nessun risultato per questo filtro'}
+          subtitle={filter === 'Prossimi' ? 'Non ci sono appuntamenti in programma' : 'Nessun risultato'}
           action="Nuovo appuntamento" onAction={openNew} />
       ) : (
         <div className="flex-1 overflow-y-auto space-y-5 pb-6">
@@ -202,7 +230,6 @@ export function AppointmentsView() {
         </div>
       )}
 
-      {/* Modali */}
       <AppointmentModal open={modalOpen}
         onClose={() => { setModalOpen(false); setEditing(null) }}
         onSave={handleSave} initial={editing} />

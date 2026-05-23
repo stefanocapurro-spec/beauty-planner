@@ -29,16 +29,12 @@ export function SplashScreen({ ready }) {
     >
       {/* Animated logo */}
       <div className="relative">
-        {/* Outer pulse ring */}
         <span
           className="absolute inset-0 rounded-[1.8rem] animate-ping opacity-20"
           style={{ background: 'var(--c-primary)' }}
         />
-        <div
-          className="relative w-24 h-24 rounded-[1.8rem] flex items-center justify-center shadow-2xl"
-          style={{ background: 'var(--c-primary)' }}
-        >
-          <span className="text-5xl select-none">✨</span>
+        <div className="relative w-24 h-24 rounded-[1.8rem] overflow-hidden shadow-2xl">
+          <img src="/icons/icon-192.png" alt="Beauty Planner" className="w-full h-full object-cover" />
         </div>
       </div>
 

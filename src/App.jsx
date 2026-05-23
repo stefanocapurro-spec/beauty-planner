@@ -65,9 +65,8 @@ function InstallBanner() {
   return (
     <div className="absolute bottom-20 left-3 right-3 z-40 card shadow-2xl animate-slide-up flex items-center gap-3 p-3"
          style={{ border: '1.5px solid var(--c-primary)' }}>
-      <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-           style={{ background: 'var(--c-primary)' }}>
-        <Sparkles size={18} color="white" />
+      <div className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0 shadow-sm">
+        <img src="/icons/icon-192.png" alt="" className="w-full h-full object-cover" />
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold text-body">Installa l'app</p>
@@ -146,12 +145,7 @@ export default function App() {
 
       {/* Header */}
       <header className="flex items-center gap-3 px-5 py-3 bg-surface border-b border-theme flex-shrink-0">
-        <div
-          className="w-8 h-8 rounded-xl flex items-center justify-center shadow-sm"
-          style={{ background: 'var(--c-primary)' }}
-        >
-          <Sparkles size={16} color="white" />
-        </div>
+        <img src="/icons/icon-192.png" alt="Beauty Planner" className="w-8 h-8 rounded-xl shadow-sm" />
         <h1 className="font-display font-semibold text-body text-base">Beauty Planner</h1>
         <div className="ml-auto">
           <span className="text-xs text-faint select-none">🔒 cifrato</span>

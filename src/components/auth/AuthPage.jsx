@@ -121,9 +121,8 @@ export function AuthPage() {
 
       <div className="w-full max-w-sm animate-slide-up relative">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-4 shadow-lg"
-               style={{ background: 'var(--c-primary)' }}>
-            <Sparkles size={30} color="white" />
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-3xl mb-4 shadow-xl overflow-hidden">
+            <img src="/icons/icon-192.png" alt="Beauty Planner" className="w-full h-full object-cover" />
           </div>
           <h1 className="font-display text-3xl font-bold text-body">Beauty Planner</h1>
           <p className="text-muted text-sm mt-1">Il tuo assistente personale ✨</p>

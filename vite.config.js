@@ -11,11 +11,11 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.png', 'apple-touch-icon.png', 'icons/*.png'],
       manifest: {
-        name: 'Beauty Planner',
-        short_name: 'Beauty',
-        description: 'Gestione appuntamenti per estetiste — cifrato end-to-end',
+        name: "Stefania's beauty",
+        short_name: "Stefania's",
+        description: 'Gestione appuntamenti — cifrato end-to-end',
         theme_color: '#7b3fa0',
-        background_color: '#f7f5fd',
+        background_color: '#f5f0fa',
         display: 'standalone',
         orientation: 'portrait',
         scope: base,
@@ -30,22 +30,19 @@ export default defineConfig({
           {
             name: 'Nuovo appuntamento',
             short_name: 'Nuovo',
-            description: 'Aggiungi un appuntamento',
             url: base + '?tab=appointments&action=new',
             icons: [{ src: 'icons/icon-192.png', sizes: '192x192' }],
           },
         ],
-        categories: ['productivity', 'lifestyle'],
       },
       workbox: {
-        // Cache-first per assets statici, network-first per le chiamate API Supabase
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
+            urlPattern: /^https:\/\/.*\.appwrite\.io\/.*/i,
             handler: 'NetworkFirst',
             options: {
-              cacheName: 'supabase-api',
+              cacheName: 'appwrite-api',
               expiration: { maxEntries: 50, maxAgeSeconds: 60 * 60 * 24 },
               networkTimeoutSeconds: 10,
             },

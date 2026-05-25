@@ -4,24 +4,36 @@ import { APP_NAME, APP_ICON } from '../../lib/constants'
 import toast from 'react-hot-toast'
 import { Eye, EyeOff, Mail, Lock, UserPlus, LogIn, AlertCircle } from 'lucide-react'
 
-function InputField({ label, type, value, onChange, icon: Icon, autoComplete }) {
+/**
+ * InputField con tutti gli attributi richiesti da iOS Safari per il
+ * riconoscimento automatico e il riempimento delle credenziali salvate:
+ *  - id        → lega la label all'input
+ *  - name      → iOS lo usa per identificare email / password
+ *  - autoComplete → istruzione esplicita al browser / portachiavi
+ */
+function InputField({ id, label, type, value, onChange, icon: Icon, autoComplete, name }) {
   const [show, setShow] = useState(false)
   const isPassword = type === 'password'
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="text-sm font-medium text-muted flex items-center gap-1.5">
+      <label htmlFor={id} className="text-sm font-medium text-muted flex items-center gap-1.5">
         <Icon size={14} className="text-faint flex-shrink-0" />{label}
       </label>
       <div className="relative">
         <input
+          id={id}
+          name={name}
           className="input-base"
           style={{ paddingRight: isPassword ? '2.75rem' : undefined }}
           type={isPassword && show ? 'text' : type}
-          value={value} onChange={onChange}
-          autoComplete={autoComplete} required
+          value={value}
+          onChange={onChange}
+          autoComplete={autoComplete}
+          required
         />
         {isPassword && (
           <button type="button" onClick={() => setShow(s => !s)} tabIndex={-1}
+            aria-label={show ? 'Nascondi password' : 'Mostra password'}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-faint hover:text-muted transition-colors">
             {show ? <EyeOff size={16} /> : <Eye size={16} />}
           </button>
@@ -47,7 +59,7 @@ function parseError(err) {
   const code = err?.code    || 0
   console.error('[Auth]', { code, msg })
   if (code === 0 || msg.toLowerCase().includes('fetch') || msg.toLowerCase().includes('network'))
-    return 'Impossibile raggiungere il server. Controlla che il dominio sia autorizzato in Appwrite Console → Platforms.'
+    return 'Impossibile raggiungere il server. Controlla la connessione.'
   if (code === 401 || msg.includes('Invalid credentials'))  return 'Email o password non corretti.'
   if (code === 409 || msg.includes('already exists'))       return 'Email già registrata — prova ad accedere.'
   if (msg.includes('password'))                             return 'Password troppo corta (minimo 8 caratteri).'
@@ -117,24 +129,65 @@ export function AuthPage() {
           <h2 className="font-display text-xl font-semibold text-body mb-6 text-center">
             {mode === 'login' ? 'Accedi' : mode === 'register' ? 'Crea account' : 'Reset password'}
           </h2>
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            <InputField label="Email" type="email" value={email}
-              onChange={e => setEmail(e.target.value)} icon={Mail} autoComplete="email" />
+
+          {/*
+            action="." → iOS Safari riconosce il form come form di login
+            method="post" → necessario per il suggerimento "Salva password"
+            onSubmit con preventDefault gestisce tutto via JS
+          */}
+          <form
+            onSubmit={handleSubmit}
+            action="."
+            method="post"
+            className="flex flex-col gap-4"
+          >
+            <InputField
+              id="email"
+              name="email"
+              label="Email"
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              icon={Mail}
+              autoComplete="email"
+            />
+
             {mode !== 'reset' && (
-              <InputField label="Password" type="password" value={password}
-                onChange={e => setPass(e.target.value)} icon={Lock}
-                autoComplete={mode === 'login' ? 'current-password' : 'new-password'} />
+              <InputField
+                id="password"
+                name="password"
+                label="Password"
+                type="password"
+                value={password}
+                onChange={e => setPass(e.target.value)}
+                icon={Lock}
+                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+              />
             )}
+
             {mode === 'register' && (
               <>
-                <InputField label="Conferma password" type="password" value={confirm}
-                  onChange={e => setConfirm(e.target.value)} icon={Lock} autoComplete="new-password" />
+                <InputField
+                  id="confirm-password"
+                  name="confirm-password"
+                  label="Conferma password"
+                  type="password"
+                  value={confirm}
+                  onChange={e => setConfirm(e.target.value)}
+                  icon={Lock}
+                  autoComplete="new-password"
+                />
                 <p className="text-xs text-faint -mt-1">Minimo 8 caratteri</p>
               </>
             )}
+
             <ErrorBox message={error} />
-            <button type="submit" disabled={busy}
-              className="btn-primary rounded-xl py-3 font-medium flex items-center justify-center gap-2 disabled:opacity-60">
+
+            <button
+              type="submit"
+              disabled={busy}
+              className="btn-primary rounded-xl py-3 font-medium flex items-center justify-center gap-2 disabled:opacity-60"
+            >
               {busy ? <span className="animate-pulse-soft">Attendere…</span> : (
                 <>
                   {mode === 'login'    && <><LogIn    size={16} /> Accedi</>}
@@ -144,6 +197,7 @@ export function AuthPage() {
               )}
             </button>
           </form>
+
           <div className="mt-5 flex flex-col gap-2 text-center text-sm">
             {mode === 'login' && (
               <>
@@ -162,7 +216,10 @@ export function AuthPage() {
             )}
           </div>
         </div>
-        <p className="text-center text-faint text-xs mt-6">Tutti i dati sono cifrati end-to-end 🔒</p>
+
+        <p className="text-center text-faint text-xs mt-6">
+          Tutti i dati sono cifrati end-to-end 🔒
+        </p>
       </div>
     </div>
   )

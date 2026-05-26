@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
-import { User, Phone, Calendar, MessageSquare, CheckCircle, Plus, X } from 'lucide-react'
+import { User, Phone, Calendar, MessageSquare, CheckCircle, Plus, X, BookUser } from 'lucide-react'
 import { format } from 'date-fns'
 import { useServices } from '../../hooks/useServices'
 import { Modal, ModalHeader, Button } from '../ui'
 import { SERVICE_CATEGORIES, CATEGORY_ICONS } from '../../data/services'
+import { pickContact, isContactPickerSupported } from '../../lib/contacts'
 import toast from 'react-hot-toast'
 
 const PAYMENT_OPTIONS = [
@@ -13,7 +14,7 @@ const PAYMENT_OPTIONS = [
   { value: 'advance',  label: 'Pagamento anticipato',  emoji: '💰' },
 ]
 
-const EMOJI_QUICK = ['🌸','💅','🧖‍♀️','✨','💆‍♀️','💄','🦵','💪','🦶','💎','🎀','🌺']
+const EMOJIS = ['🌸','💅','🧖‍♀️','✨','💆‍♀️','💄','🦵','💪','🦶','💎','🎀','🌺']
 
 function Field({ label, children }) {
   return (
@@ -24,7 +25,7 @@ function Field({ label, children }) {
   )
 }
 
-// ── Mini-form aggiunta nuova prestazione inline ───────────────────────────
+// ── Form aggiunta nuova prestazione inline ────────────────────────────────
 function AddServiceInline({ onAdd, onCancel }) {
   const [icon,     setIcon]     = useState('🌸')
   const [category, setCategory] = useState('Altro')
@@ -38,11 +39,8 @@ function AddServiceInline({ onAdd, onCancel }) {
     try {
       await onAdd({ icon, category, name: name.trim(), price: Number(price) })
       toast.success('Prestazione aggiunta! 🌸')
-    } catch (e) {
-      toast.error(e.message || 'Errore')
-    } finally {
-      setBusy(false)
-    }
+    } catch (e) { toast.error(e.message || 'Errore') }
+    finally { setBusy(false) }
   }
 
   return (
@@ -50,22 +48,16 @@ function AddServiceInline({ onAdd, onCancel }) {
          style={{ borderColor: 'var(--c-primary)', background: 'var(--c-surface-2)' }}>
       <div className="flex items-center justify-between mb-3">
         <p className="text-xs font-semibold text-primary">✨ Nuova prestazione</p>
-        <button type="button" onClick={onCancel} className="text-faint hover:text-muted">
-          <X size={14} />
-        </button>
+        <button type="button" onClick={onCancel} className="text-faint hover:text-muted"><X size={14}/></button>
       </div>
-
-      {/* Emoji rapide */}
       <div className="flex flex-wrap gap-1 mb-3">
-        {EMOJI_QUICK.map(e => (
+        {EMOJIS.map(e => (
           <button key={e} type="button" onClick={() => setIcon(e)}
-            className={`text-base p-1 rounded-lg transition-all ${icon === e ? 'ring-2 bg-surface' : 'hover:bg-surface'}`}
-            style={{ ringColor: 'var(--c-primary)' }}>
+            className={`text-base p-1 rounded-lg transition-all ${icon === e ? 'ring-2 bg-surface' : 'hover:bg-surface'}`}>
             {e}
           </button>
         ))}
       </div>
-
       <div className="grid grid-cols-2 gap-2 mb-2">
         <div>
           <label className="text-xs text-muted mb-1 block">Categoria</label>
@@ -79,14 +71,11 @@ function AddServiceInline({ onAdd, onCancel }) {
             value={price} onChange={e => setPrice(e.target.value)} placeholder="0" />
         </div>
       </div>
-
       <div className="mb-3">
         <label className="text-xs text-muted mb-1 block">Nome prestazione</label>
-        <input className="input-base text-xs" value={name}
-          onChange={e => setName(e.target.value)}
+        <input className="input-base text-xs" value={name} onChange={e => setName(e.target.value)}
           placeholder="es. Trattamento viso completo" />
       </div>
-
       <div className="flex gap-2">
         <button type="button" onClick={onCancel}
           className="flex-1 py-1.5 rounded-xl border border-theme text-xs text-muted hover:bg-surface transition-colors">
@@ -106,6 +95,7 @@ export function AppointmentModal({ open, onClose, onSave, initial }) {
   const { services, addService } = useServices()
   const isEdit = !!initial?.id
   const [showAddService, setShowAddService] = useState(false)
+  const [pickingContact, setPickingContact] = useState(false)
 
   const blank = {
     client_name: '', client_phone: '',
@@ -132,6 +122,25 @@ export function AppointmentModal({ open, onClose, onSave, initial }) {
   const field = key => e =>
     setForm(f => ({ ...f, [key]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }))
 
+  // ── Importa dalla rubrica ─────────────────────────────────────────────
+  async function handlePickContact() {
+    setPickingContact(true)
+    try {
+      const contact = await pickContact()
+      if (!contact) return
+      setForm(f => ({
+        ...f,
+        client_name:  contact.name  || f.client_name,
+        client_phone: contact.phone || f.client_phone,
+      }))
+      toast.success('Contatto importato! 📱')
+    } catch (e) {
+      toast.error('Impossibile aprire la rubrica')
+    } finally {
+      setPickingContact(false)
+    }
+  }
+
   function selectService(id) {
     const svc = services.find(s => s.id === id)
     setForm(f => ({ ...f, service_id: id, service_name: svc?.name ?? '', service_price: svc?.price ?? '' }))
@@ -139,7 +148,6 @@ export function AppointmentModal({ open, onClose, onSave, initial }) {
 
   async function handleAddService(data) {
     const newSvc = await addService(data)
-    // Seleziona automaticamente la prestazione appena aggiunta
     setForm(f => ({ ...f, service_id: newSvc.id, service_name: newSvc.name, service_price: newSvc.price }))
     setShowAddService(false)
   }
@@ -151,7 +159,6 @@ export function AppointmentModal({ open, onClose, onSave, initial }) {
     finally { setBusy(false) }
   }
 
-  // Raggruppa per categoria
   const grouped = services.reduce((acc, s) => {
     ;(acc[s.category] = acc[s.category] || []).push(s)
     return acc
@@ -159,6 +166,8 @@ export function AppointmentModal({ open, onClose, onSave, initial }) {
 
   const residuo = form.service_price && form.advance_amount
     ? Number(form.service_price) - Number(form.advance_amount) : null
+
+  const canPickContact = isContactPickerSupported()
 
   return (
     <Modal open={open} onClose={onClose}>
@@ -169,15 +178,27 @@ export function AppointmentModal({ open, onClose, onSave, initial }) {
       <form onSubmit={handleSave} className="p-5 flex flex-col gap-4">
 
         {/* Cliente */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="👤 Nome cliente">
-            <input className="input-base" value={form.client_name}
-              onChange={field('client_name')} placeholder="Nome e cognome" required />
-          </Field>
-          <Field label="📞 Telefono">
-            <input className="input-base" type="tel" value={form.client_phone}
-              onChange={field('client_phone')} placeholder="+39 320 …" />
-          </Field>
+        <div className="flex flex-col gap-3">
+          {/* Pulsante rubrica — solo se supportato */}
+          {canPickContact && (
+            <button type="button" onClick={handlePickContact} disabled={pickingContact}
+              className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl border-2 text-sm font-medium transition-all disabled:opacity-60"
+              style={{ borderColor: 'var(--c-primary)', color: 'var(--c-primary)', background: 'var(--c-surface-2)' }}>
+              <BookUser size={16} />
+              {pickingContact ? 'Apertura rubrica…' : 'Importa dalla rubrica'}
+            </button>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Field label="👤 Nome cliente">
+              <input className="input-base" value={form.client_name}
+                onChange={field('client_name')} placeholder="Nome e cognome" required />
+            </Field>
+            <Field label="📞 Telefono">
+              <input className="input-base" type="tel" value={form.client_phone}
+                onChange={field('client_phone')} placeholder="+39 320 …" />
+            </Field>
+          </div>
         </div>
 
         {/* Data e ora */}
@@ -186,7 +207,7 @@ export function AppointmentModal({ open, onClose, onSave, initial }) {
             value={form.appointment_date} onChange={field('appointment_date')} required />
         </Field>
 
-        {/* Prestazione + pulsante aggiungi */}
+        {/* Prestazione */}
         <div>
           <div className="flex items-center justify-between mb-1">
             <label className="text-xs font-medium text-muted">💆‍♀️ Prestazione</label>
@@ -194,12 +215,11 @@ export function AppointmentModal({ open, onClose, onSave, initial }) {
               <button type="button" onClick={() => setShowAddService(true)}
                 className="flex items-center gap-1 text-xs font-medium transition-colors hover:opacity-80"
                 style={{ color: 'var(--c-primary)' }}>
-                <Plus size={13} /> Aggiungi nuova prestazione all'elenco
+                <Plus size={13} /> Aggiungi nuova all'elenco
               </button>
             )}
           </div>
 
-          {/* Dropdown prestazioni esistenti */}
           {!showAddService && (
             <>
               <select className="input-base" value={form.service_id}
@@ -223,12 +243,8 @@ export function AppointmentModal({ open, onClose, onSave, initial }) {
             </>
           )}
 
-          {/* Form aggiunta nuova prestazione */}
           {showAddService && (
-            <AddServiceInline
-              onAdd={handleAddService}
-              onCancel={() => setShowAddService(false)}
-            />
+            <AddServiceInline onAdd={handleAddService} onCancel={() => setShowAddService(false)} />
           )}
         </div>
 
@@ -239,7 +255,7 @@ export function AppointmentModal({ open, onClose, onSave, initial }) {
             placeholder="Preferenze, allergie, richieste speciali…" />
         </Field>
 
-        {/* Stato pagamento */}
+        {/* Pagamento */}
         <div>
           <p className="text-xs font-medium text-muted mb-2">💳 Pagamento</p>
           <div className="grid grid-cols-2 gap-2">
@@ -260,7 +276,7 @@ export function AppointmentModal({ open, onClose, onSave, initial }) {
           </div>
         </div>
 
-        {/* Importo anticipo */}
+        {/* Anticipo */}
         {form.payment_status === 'advance' && (
           <Field label="💰 Importo anticipato (€)">
             <input className="input-base" type="number" min="0" step="0.01"

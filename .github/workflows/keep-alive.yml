@@ -1,0 +1,39 @@
+name: Keep Appwrite Alive
+
+on:
+  # Esegue ogni giorno alle 08:00 ora italiana (07:00 UTC)
+  schedule:
+    - cron: '0 7 * * *'
+  # Permette di eseguirlo manualmente dalla tab Actions
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Appwrite health endpoint
+        run: |
+          echo "🏓 Ping Appwrite — $(date)"
+
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "X-Appwrite-Project: ${{ secrets.VITE_APPWRITE_PROJECT_ID }}" \
+            "https://cloud.appwrite.io/v1/health")
+
+          echo "Risposta HTTP: $STATUS"
+
+          if [ "$STATUS" = "200" ]; then
+            echo "✅ Appwrite attivo"
+          else
+            echo "⚠️  Risposta inattesa: $STATUS"
+            exit 1
+          fi
+
+      - name: Ping database endpoint
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "X-Appwrite-Project: ${{ secrets.VITE_APPWRITE_PROJECT_ID }}" \
+            -H "X-Appwrite-Key: ${{ secrets.APPWRITE_API_KEY }}" \
+            "https://cloud.appwrite.io/v1/databases/${{ secrets.VITE_APPWRITE_DATABASE_ID }}")
+
+          echo "Database ping — HTTP: $STATUS"
+          echo "✅ Ping completato — progetto mantenuto attivo"

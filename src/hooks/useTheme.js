@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { applyTheme, resolveMode, DEFAULT_PALETTE } from '../styles/themes'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './useAuth'
@@ -6,7 +6,12 @@ import { useAuth } from './useAuth'
 const STORAGE_KEY_PALETTE = 'bp_palette'
 const STORAGE_KEY_MODE    = 'bp_mode'
 
-export function useTheme() {
+const ThemeContext = createContext(null)
+
+// Il Provider va montato UNA VOLTA SOLA, in cima all'app (App.jsx), così
+// l'effetto che applica i colori scatta subito all'avvio e non solo quando
+// si visita la pagina Impostazioni.
+export function ThemeProvider({ children }) {
   const { user } = useAuth()
   const [palette,    setPalette]    = useState(() => localStorage.getItem(STORAGE_KEY_PALETTE) || DEFAULT_PALETTE)
   const [preference, setPreference] = useState(() => localStorage.getItem(STORAGE_KEY_MODE)    || 'system')
@@ -38,12 +43,12 @@ export function useTheme() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id])
 
-  // Apply on mount and whenever palette / preference changes
+  // Applica subito al mount e ad ogni cambio
   useEffect(() => {
     apply(palette, preference)
   }, [palette, preference, apply])
 
-  // React to system theme changes
+  // Reagisce ai cambi di tema di sistema
   useEffect(() => {
     if (preference !== 'system') return
     const mq = window.matchMedia('(prefers-color-scheme: dark)')
@@ -52,7 +57,6 @@ export function useTheme() {
     return () => mq.removeEventListener('change', handler)
   }, [preference, palette, apply])
 
-  // Salva sia in locale (veloce) sia sull'account (durevole)
   const syncToAccount = useCallback((pal, pref) => {
     if (!user) return
     supabase.auth.updateUser({ data: { palette: pal, theme_mode: pref } })
@@ -71,5 +75,18 @@ export function useTheme() {
     syncToAccount(palette, pref)
   }, [palette, syncToAccount])
 
-  return { palette, preference, changePalette, changeMode }
+  return (
+    <ThemeContext.Provider value={{ palette, preference, changePalette, changeMode }}>
+      {children}
+    </ThemeContext.Provider>
+  )
+}
+
+// Stessa API di prima (palette, preference, changePalette, changeMode) —
+// SettingsView.jsx non deve cambiare nulla, continua a chiamare useTheme()
+// esattamente come faceva già.
+export function useTheme() {
+  const ctx = useContext(ThemeContext)
+  if (!ctx) throw new Error('useTheme deve essere usato dentro <ThemeProvider>')
+  return ctx
 }

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Toaster } from 'react-hot-toast'
 import { useAuth } from './hooks/useAuth'
+import { ThemeProvider } from './hooks/useTheme'
 import { AuthPage } from './components/auth/AuthPage'
 import { AppointmentsView } from './components/appointments/AppointmentsView'
 import { ServicesView } from './components/services/ServicesView'
@@ -85,7 +86,7 @@ function NoCryptoKey() {
 }
 
 // ── App principale ────────────────────────────────────────────────────────
-export default function App() {
+function AppContent() {
   const { user, cryptoKey, loading } = useAuth()
   const [tab,       setTab]       = useState('appointments')
   const [adminOpen, setAdminOpen] = useState(false)
@@ -136,5 +137,15 @@ export default function App() {
           duration: 3000,
         }} />
     </div>
+  )
+}
+
+// ThemeProvider avvolge tutto, così i colori scelti si applicano subito
+// all'avvio (splash/login inclusi) e non solo aprendo Impostazioni.
+export default function App() {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
   )
 }

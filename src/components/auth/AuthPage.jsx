@@ -149,7 +149,7 @@ export function AuthPage() {
               value={email}
               onChange={e => setEmail(e.target.value)}
               icon={Mail}
-              autoComplete="email"
+              autoComplete="username"
             />
 
             {mode !== 'reset' && (

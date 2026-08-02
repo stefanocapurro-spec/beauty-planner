@@ -28,7 +28,7 @@ export function PaymentsView() {
   // Raggruppa per mese
   const byMonth = useMemo(() => {
     return payments.reduce((acc, p) => {
-      const key = format(new Date(p.$createdAt || Date.now()), 'MMMM yyyy', { locale: it })
+      const key = format(new Date(p.created_at || Date.now()), 'MMMM yyyy', { locale: it })
       ;(acc[key] = acc[key] || []).push(p)
       return acc
     }, {})

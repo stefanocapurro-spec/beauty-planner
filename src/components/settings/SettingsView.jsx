@@ -23,7 +23,7 @@ export function SettingsView({ onSuperAdmin }) {
   }
 
   return (
-    <div className="flex flex-col h-full pb-6">
+    <div className="flex flex-col h-full overflow-y-auto pb-6">
       <h1 className="font-display text-2xl font-bold text-body mb-5">Impostazioni</h1>
 
       {/* Account */}

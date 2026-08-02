@@ -1,63 +1,45 @@
 import { useState, useEffect, useCallback } from 'react'
-import { databases, DB_ID, COL, ID, Query, ownerPerms } from '../lib/appwrite'
-import { encrypt, decrypt } from '../lib/crypto'
+import { supabase, TABLES } from '../lib/supabase'
+import { encryptRecord, decryptRecords, decryptRecord } from '../lib/crypto'
 import { useAuth } from './useAuth'
-
-const ENC_FIELDS = ['client_name', 'client_phone', 'service_name', 'notes']
-
-async function encryptAppt(data, cryptoKey) {
-  const out = { ...data }
-  for (const f of ENC_FIELDS) {
-    if (f in data && data[f] != null)
-      out[f] = await encrypt(data[f], cryptoKey)
-  }
-  return out
-}
-
-async function decryptAppt(doc, cryptoKey) {
-  const out = { ...doc, id: doc.$id }
-  for (const f of ENC_FIELDS) {
-    if (f in doc && typeof doc[f] === 'string') {
-      try { out[f] = await decrypt(doc[f], cryptoKey) }
-      catch { out[f] = doc[f] }
-    }
-  }
-  return out
-}
 
 export function useAppointments() {
   const { user, cryptoKey } = useAuth()
   const [appointments, setAppointments] = useState([])
-  const [loading,      setLoading]      = useState(true)
+  const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
     if (!user || !cryptoKey) return
     setLoading(true)
     try {
-      const res = await databases.listDocuments(DB_ID, COL.APPOINTMENTS, [
-        Query.equal('user_id', user.$id),
-        Query.orderAsc('appointment_date'),
-        Query.limit(500),
-      ])
-      const decrypted = await Promise.all(res.documents.map(d => decryptAppt(d, cryptoKey)))
+      const { data, error } = await supabase
+        .from(TABLES.APPOINTMENTS)
+        .select('*')
+        .order('appointment_date', { ascending: true })
+        .limit(500)
+      if (error) throw error
+      const decrypted = await decryptRecords(data, cryptoKey)
       setAppointments(decrypted)
-    } finally { setLoading(false) }
+    } catch (e) {
+      console.error('[useAppointments] load:', e)
+    } finally {
+      setLoading(false)
+    }
   }, [user, cryptoKey])
 
   useEffect(() => { load() }, [load])
 
   const add = useCallback(async (appt) => {
-    const payload = await encryptAppt({
+    const record = await encryptRecord({
       ...appt,
-      user_id:        user.$id,
+      user_id: user.id,
       payment_status: appt.payment_status || 'pending',
-      service_price:  appt.service_price != null ? String(appt.service_price) : null,
+      service_price: appt.service_price != null ? String(appt.service_price) : null,
       advance_amount: appt.advance_amount != null ? String(appt.advance_amount) : null,
     }, cryptoKey)
-    const doc = await databases.createDocument(
-      DB_ID, COL.APPOINTMENTS, ID.unique(), payload, ownerPerms(user.$id)
-    )
-    const plain = await decryptAppt(doc, cryptoKey)
+    const { data, error } = await supabase.from(TABLES.APPOINTMENTS).insert(record).select().single()
+    if (error) throw error
+    const plain = await decryptRecord(data, cryptoKey)
     setAppointments(prev =>
       [...prev, plain].sort((a, b) => new Date(a.appointment_date) - new Date(b.appointment_date))
     )
@@ -65,19 +47,21 @@ export function useAppointments() {
   }, [user, cryptoKey])
 
   const update = useCallback(async (id, changes) => {
-    const payload = await encryptAppt({
+    const record = await encryptRecord({
       ...changes,
-      service_price:  changes.service_price  != null ? String(changes.service_price)  : null,
+      service_price: changes.service_price != null ? String(changes.service_price) : null,
       advance_amount: changes.advance_amount != null ? String(changes.advance_amount) : null,
     }, cryptoKey)
-    const doc = await databases.updateDocument(DB_ID, COL.APPOINTMENTS, id, payload)
-    const plain = await decryptAppt(doc, cryptoKey)
+    const { data, error } = await supabase.from(TABLES.APPOINTMENTS).update(record).eq('id', id).select().single()
+    if (error) throw error
+    const plain = await decryptRecord(data, cryptoKey)
     setAppointments(prev => prev.map(a => a.id === id ? plain : a))
     return plain
   }, [cryptoKey])
 
   const remove = useCallback(async (id) => {
-    await databases.deleteDocument(DB_ID, COL.APPOINTMENTS, id)
+    const { error } = await supabase.from(TABLES.APPOINTMENTS).delete().eq('id', id)
+    if (error) throw error
     setAppointments(prev => prev.filter(a => a.id !== id))
   }, [])
 

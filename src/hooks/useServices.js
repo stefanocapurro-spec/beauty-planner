@@ -1,22 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { databases, DB_ID, COL, ID, Query, ownerPerms } from '../lib/appwrite'
-import { encrypt, decrypt } from '../lib/crypto'
+import { supabase, TABLES } from '../lib/supabase'
+import { encryptRecord, decryptRecords } from '../lib/crypto'
 import { DEFAULT_SERVICES } from '../data/services'
 import { useAuth } from './useAuth'
-
-async function decryptService(doc, cryptoKey) {
-  try {
-    return {
-      id:       doc.$id,
-      icon:     doc.icon,
-      category: doc.category,
-      name:     await decrypt(doc.name,  cryptoKey),
-      price:    Number(await decrypt(doc.price, cryptoKey)),
-    }
-  } catch {
-    return { id: doc.$id, icon: doc.icon, category: doc.category, name: '(errore)', price: 0 }
-  }
-}
 
 const byCategory = (a, b) =>
   a.category.localeCompare(b.category) || a.name.localeCompare(b.name)
@@ -24,47 +10,39 @@ const byCategory = (a, b) =>
 export function useServices() {
   const { user, cryptoKey } = useAuth()
   const [services, setServices] = useState([])
-  const [loading,  setLoading]  = useState(true)
+  const [loading, setLoading] = useState(true)
   const seeded = useRef(false)
 
   const load = useCallback(async () => {
     if (!user || !cryptoKey) return
     setLoading(true)
     try {
-      const res = await databases.listDocuments(DB_ID, COL.SERVICES, [
-        Query.equal('user_id', user.$id),
-        Query.limit(200),
-      ])
+      // RLS filtra già per user_id, non serve più il .eq('user_id', ...)
+      const { data, error } = await supabase
+        .from(TABLES.SERVICES)
+        .select('*')
+        .limit(200)
+      if (error) throw error
 
-      // Seed solo se questo utente non ha ancora servizi
-      if (res.total === 0 && !seeded.current) {
+      if (data.length === 0 && !seeded.current) {
         seeded.current = true
         for (const s of DEFAULT_SERVICES) {
-          try {
-            // ID.unique() → nessun conflitto tra utenti diversi
-            await databases.createDocument(DB_ID, COL.SERVICES, ID.unique(), {
-              user_id:  user.$id,
-              icon:     s.icon,
-              category: s.category,
-              name:     await encrypt(s.name,  cryptoKey),
-              price:    await encrypt(String(s.price), cryptoKey),
-            }, ownerPerms(user.$id))
-          } catch (e) {
-            console.warn('Seed skip:', s.name, e.message)
-          }
+          const record = await encryptRecord(
+            { user_id: user.id, icon: s.icon, category: s.category, name: s.name, price: String(s.price) },
+            cryptoKey
+          )
+          const { error: insErr } = await supabase.from(TABLES.SERVICES).insert(record)
+          if (insErr) console.warn('Seed skip:', s.name, insErr.message)
         }
-        // Rileggi dopo il seed
-        const res2 = await databases.listDocuments(DB_ID, COL.SERVICES, [
-          Query.equal('user_id', user.$id),
-          Query.limit(200),
-        ])
-        const plain = await Promise.all(res2.documents.map(d => decryptService(d, cryptoKey)))
-        setServices(plain.sort(byCategory))
+        const { data: data2, error: err2 } = await supabase.from(TABLES.SERVICES).select('*').limit(200)
+        if (err2) throw err2
+        const plain = await decryptRecords(data2, cryptoKey)
+        setServices(plain.map(p => ({ ...p, price: Number(p.price) })).sort(byCategory))
         return
       }
 
-      const plain = await Promise.all(res.documents.map(d => decryptService(d, cryptoKey)))
-      setServices(plain.sort(byCategory))
+      const plain = await decryptRecords(data, cryptoKey)
+      setServices(plain.map(p => ({ ...p, price: Number(p.price) })).sort(byCategory))
     } catch (e) {
       console.error('[useServices] load:', e)
     } finally {
@@ -75,31 +53,29 @@ export function useServices() {
   useEffect(() => { load() }, [load])
 
   const addService = useCallback(async ({ icon, category, name, price }) => {
-    const doc = await databases.createDocument(DB_ID, COL.SERVICES, ID.unique(), {
-      user_id:  user.$id,
-      icon, category,
-      name:  await encrypt(name, cryptoKey),
-      price: await encrypt(String(Number(price)), cryptoKey),
-    }, ownerPerms(user.$id))
-    const plain = { id: doc.$id, icon, category, name, price: Number(price) }
+    const record = await encryptRecord(
+      { user_id: user.id, icon, category, name, price: String(Number(price)) },
+      cryptoKey
+    )
+    const { data, error } = await supabase.from(TABLES.SERVICES).insert(record).select().single()
+    if (error) throw error
+    const plain = { id: data.id, icon, category, name, price: Number(price) }
     setServices(prev => [...prev, plain].sort(byCategory))
     return plain
   }, [user, cryptoKey])
 
   const updateService = useCallback(async (id, { icon, category, name, price }) => {
-    await databases.updateDocument(DB_ID, COL.SERVICES, id, {
-      icon, category,
-      name:  await encrypt(name, cryptoKey),
-      price: await encrypt(String(Number(price)), cryptoKey),
-    })
+    const record = await encryptRecord({ icon, category, name, price: String(Number(price)) }, cryptoKey)
+    const { error } = await supabase.from(TABLES.SERVICES).update(record).eq('id', id)
+    if (error) throw error
     setServices(prev =>
-      prev.map(s => s.id === id ? { ...s, icon, category, name, price: Number(price) } : s)
-          .sort(byCategory)
+      prev.map(s => s.id === id ? { ...s, icon, category, name, price: Number(price) } : s).sort(byCategory)
     )
   }, [cryptoKey])
 
   const deleteService = useCallback(async (id) => {
-    await databases.deleteDocument(DB_ID, COL.SERVICES, id)
+    const { error } = await supabase.from(TABLES.SERVICES).delete().eq('id', id)
+    if (error) throw error
     setServices(prev => prev.filter(s => s.id !== id))
   }, [])
 

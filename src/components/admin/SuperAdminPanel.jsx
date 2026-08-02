@@ -1,52 +1,94 @@
-import { useState } from 'react'
-import { Shield, Trash2, RefreshCw, AlertTriangle } from 'lucide-react'
-import { databases, DB_ID, COL, Query } from '../../lib/appwrite'
+import { useState, useEffect } from 'react'
+import { Shield, Trash2, RefreshCw, AlertTriangle, UserX, KeyRound } from 'lucide-react'
+import { supabase, TABLES } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
+import { useAdminUsers } from '../../hooks/useAdminUsers'
 import { Modal, ModalHeader, Button } from '../ui'
 import toast from 'react-hot-toast'
 
-async function deleteAllForUser(userId) {
-  for (const col of [COL.PAYMENTS, COL.APPOINTMENTS, COL.SERVICES]) {
-    let total = Infinity, deleted = 0
-    while (deleted < total) {
-      const res = await databases.listDocuments(DB_ID, col, [
-        Query.equal('user_id', userId), Query.limit(100),
-      ])
-      total = res.total
-      if (res.documents.length === 0) break
-      await Promise.all(res.documents.map(d => databases.deleteDocument(DB_ID, col, d.$id)))
-      deleted += res.documents.length
-    }
+// Reset dei propri dati: passa dal client normale, RLS lascia fare
+// all'utente solo sulle proprie righe (auth.uid() = user_id).
+async function deleteOwnData(userId) {
+  for (const table of [TABLES.PAYMENTS, TABLES.APPOINTMENTS, TABLES.SERVICES]) {
+    const { error } = await supabase.from(table).delete().eq('user_id', userId)
+    if (error) throw error
   }
 }
 
 export function SuperAdminPanel({ onClose }) {
   const { user } = useAuth()
-  const [confirm,      setConfirm]      = useState('')
-  const [busy,         setBusy]         = useState(false)
+  const { listUsers, wipeUserData, deleteUser, resetUserPassword } = useAdminUsers()
+
+  const [confirm, setConfirm] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [users, setUsers] = useState([])
   const [targetUserId, setTargetUserId] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmEmail, setConfirmEmail] = useState('')
   const canAct = confirm === 'RESET'
+
+  const targetUser = users.find(u => u.id === targetUserId)
+  // Le due azioni più distruttive (irreversibili anche per l'account, non solo per i dati)
+  // richiedono di ridigitare l'email esatta dell'utente selezionato, non solo "RESET".
+  const canActHard = canAct && targetUser && confirmEmail.trim().toLowerCase() === targetUser.email.toLowerCase()
+
+  // Se cambio utente selezionato, la conferma email precedente non è più valida
+  useEffect(() => { setConfirmEmail('') }, [targetUserId])
+
+  useEffect(() => {
+    listUsers().then(setUsers).catch(e => toast.error(e.message))
+  }, [listUsers])
 
   async function resetOwn() {
     if (!canAct) { toast.error('Digita RESET per confermare'); return }
     setBusy(true)
     try {
-      await deleteAllForUser(user.$id)
+      await deleteOwnData(user.id)
       toast.success('Tutti i tuoi dati sono stati eliminati 🗑️')
       setConfirm('')
     } catch (e) { toast.error(e.message) }
     finally { setBusy(false) }
   }
 
-  async function resetUser() {
-    if (!canAct || !targetUserId.trim()) {
-      toast.error('Inserisci un User ID e digita RESET'); return
+  async function resetUserData() {
+    if (!canAct || !targetUserId) {
+      toast.error('Seleziona un utente e digita RESET'); return
     }
     setBusy(true)
     try {
-      await deleteAllForUser(targetUserId.trim())
-      toast.success(`Dati dell'utente eliminati`)
+      await wipeUserData(targetUserId)
+      toast.success('Dati dell\'utente eliminati')
       setConfirm(''); setTargetUserId('')
+    } catch (e) { toast.error(e.message) }
+    finally { setBusy(false) }
+  }
+
+  async function removeUser() {
+    if (!canActHard) {
+      toast.error('Digita RESET e ridigita l\'email esatta dell\'utente'); return
+    }
+    setBusy(true)
+    try {
+      await deleteUser(targetUserId, true)
+      toast.success('Utente eliminato definitivamente')
+      setConfirm(''); setTargetUserId(''); setConfirmEmail('')
+      setUsers(await listUsers())
+    } catch (e) { toast.error(e.message) }
+    finally { setBusy(false) }
+  }
+
+  async function changeUserPassword() {
+    if (!canActHard || newPassword.length < 8) {
+      toast.error('Ridigita l\'email dell\'utente e imposta una password (min. 8 caratteri)')
+      return
+    }
+    setBusy(true)
+    try {
+      // I dati già cifrati dell'utente diventano illeggibili con la nuova
+      // password (chiave derivata da password+userId): li rimuoviamo insieme.
+      await resetUserPassword(targetUserId, newPassword, true)
+      toast.success('Password aggiornata, dati precedenti rimossi')
+      setConfirm(''); setTargetUserId(''); setNewPassword(''); setConfirmEmail('')
     } catch (e) { toast.error(e.message) }
     finally { setBusy(false) }
   }
@@ -84,23 +126,74 @@ export function SuperAdminPanel({ onClose }) {
           </Button>
         </div>
 
-        {/* Reset utente specifico tramite User ID */}
-        <div className="card p-3" style={{ borderColor: 'var(--c-warning)' }}>
-          <p className="text-xs font-semibold text-body mb-1">Reset utente specifico</p>
-          <p className="text-xs text-faint mb-2">
-            Inserisci l'<strong>User ID</strong> Appwrite (visibile in Appwrite Console → Auth → Users).
-          </p>
-          <input className="input-base text-xs mb-2 font-mono"
-            placeholder="6507c9a8b3f2d..."
+        {/* Selezione utente per le azioni successive */}
+        <div>
+          <label className="text-xs text-muted mb-1 block">Utente</label>
+          <select className="input-base text-xs"
             value={targetUserId}
-            onChange={e => setTargetUserId(e.target.value)} />
-          <button onClick={resetUser}
+            onChange={e => setTargetUserId(e.target.value)}>
+            <option value="">Seleziona un utente...</option>
+            {users.map(u => (
+              <option key={u.id} value={u.id}>{u.email}</option>
+            ))}
+          </select>
+        </div>
+
+        {targetUserId && (
+          <div>
+            <label className="text-xs text-muted mb-1 block">
+              Ridigita <strong>{targetUser?.email}</strong> per abilitare eliminazione account e reset password
+            </label>
+            <input className="input-base text-xs" value={confirmEmail}
+              onChange={e => setConfirmEmail(e.target.value)}
+              placeholder="email dell'utente" />
+          </div>
+        )}
+
+        {/* Reset solo dati utente */}
+        <div className="card p-3" style={{ borderColor: 'var(--c-warning)' }}>
+          <p className="text-xs font-semibold text-body mb-1">Reset dati utente</p>
+          <p className="text-xs text-faint mb-2">
+            Elimina i dati dell'utente selezionato, l'account resta attivo.
+          </p>
+          <button onClick={resetUserData}
             disabled={busy || !canAct || !targetUserId}
             className="w-full py-2 rounded-xl text-xs font-medium flex items-center
                        justify-center gap-2 disabled:opacity-40 transition-colors"
             style={{ background: 'var(--c-warning)', color: 'white' }}>
-            <RefreshCw size={13} /> Reset utente
+            <RefreshCw size={13} /> Reset dati utente
           </button>
+        </div>
+
+        {/* Reset password utente */}
+        <div className="card p-3" style={{ borderColor: 'var(--c-warning)' }}>
+          <p className="text-xs font-semibold text-body mb-1">Reset password utente</p>
+          <p className="text-xs text-faint mb-2">
+            ⚠️ Rende illeggibili i dati cifrati precedenti dell'utente (vengono rimossi insieme al reset).
+          </p>
+          <input type="password" className="input-base text-xs mb-2"
+            placeholder="Nuova password (min. 8 caratteri)"
+            value={newPassword}
+            onChange={e => setNewPassword(e.target.value)} />
+          <button onClick={changeUserPassword}
+            disabled={busy || !canActHard || newPassword.length < 8}
+            className="w-full py-2 rounded-xl text-xs font-medium flex items-center
+                       justify-center gap-2 disabled:opacity-40 transition-colors"
+            style={{ background: 'var(--c-warning)', color: 'white' }}>
+            <KeyRound size={13} /> Imposta nuova password
+          </button>
+        </div>
+
+        {/* Elimina utente */}
+        <div className="card p-3" style={{ borderColor: 'var(--c-danger)' }}>
+          <p className="text-xs font-semibold text-body mb-1">Elimina utente</p>
+          <p className="text-xs text-faint mb-3">
+            Cancella definitivamente l'account selezionato e tutti i suoi dati.
+          </p>
+          <Button variant="danger" size="sm" disabled={busy || !canActHard}
+            onClick={removeUser} className="w-full">
+            <UserX size={13} /> Elimina utente selezionato
+          </Button>
         </div>
 
       </div>

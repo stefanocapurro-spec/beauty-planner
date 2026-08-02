@@ -78,14 +78,14 @@ define(['./workbox-2427537b'], (function (workbox) { 'use strict';
    */
   workbox.precacheAndRoute([{
     "url": "index.html",
-    "revision": "0.cb5o5v8urig"
+    "revision": "0.g498uj8vjqc"
   }], {});
   workbox.cleanupOutdatedCaches();
   workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("index.html"), {
     allowlist: [/^\/$/]
   }));
-  workbox.registerRoute(/^https:\/\/.*\.supabase\.co\/.*/i, new workbox.NetworkFirst({
-    "cacheName": "supabase-api",
+  workbox.registerRoute(/^https:\/\/.*\.appwrite\.io\/.*/i, new workbox.NetworkFirst({
+    "cacheName": "appwrite-api",
     "networkTimeoutSeconds": 10,
     plugins: [new workbox.ExpirationPlugin({
       maxEntries: 50,

@@ -11,22 +11,40 @@ const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 // Client "admin", usa la service_role key — usato solo server-side
 const adminClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
 
+// Header CORS: necessari perché il browser chiama questa funzione da un
+// dominio diverso (github.io) rispetto a quello della funzione stessa.
+// Senza questi header, il browser blocca la richiesta con "Failed to fetch"
+// prima ancora che la funzione venga eseguita.
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+
+function json(body, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  })
+}
+
 Deno.serve(async (req) => {
+  // Il browser invia sempre una richiesta OPTIONS di "controllo" prima del
+  // POST vero e proprio quando ci sono header custom come Authorization.
+  // Va gestita esplicitamente, altrimenti fallisce silenziosamente.
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders })
+  }
+
   try {
     // 1. Verifica che chi chiama sia autenticato e sia il superadmin
     const authHeader = req.headers.get('Authorization')
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: 'Non autenticato' }), { status: 401 })
-    }
+    if (!authHeader) return json({ error: 'Non autenticato' }, 401)
     const token = authHeader.replace('Bearer ', '')
 
     const { data: { user }, error: userErr } = await adminClient.auth.getUser(token)
-    if (userErr || !user) {
-      return new Response(JSON.stringify({ error: 'Token non valido' }), { status: 401 })
-    }
-    if (user.email !== SUPERADMIN_EMAIL) {
-      return new Response(JSON.stringify({ error: 'Non autorizzato' }), { status: 403 })
-    }
+    if (userErr || !user) return json({ error: 'Token non valido' }, 401)
+    if (user.email !== SUPERADMIN_EMAIL) return json({ error: 'Non autorizzato' }, 403)
 
     // 2. Esegui l'azione richiesta
     const { action, targetUserId, newPassword, wipeData } = await req.json()
@@ -40,33 +58,28 @@ Deno.serve(async (req) => {
         created_at: u.created_at,
         last_sign_in_at: u.last_sign_in_at,
       }))
-      return new Response(JSON.stringify({ users }), { status: 200 })
+      return json({ users })
     }
 
     if (action === 'wipeUserData') {
-      // Elimina solo i dati (services/appointments/payments), mantiene l'account attivo.
-      // Equivalente esatto del "Reset utente specifico" del vecchio SuperAdminPanel.
       await adminClient.from('services').delete().eq('user_id', targetUserId)
       await adminClient.from('appointments').delete().eq('user_id', targetUserId)
       await adminClient.from('payments').delete().eq('user_id', targetUserId)
-      return new Response(JSON.stringify({ ok: true }), { status: 200 })
+      return json({ ok: true })
     }
 
     if (action === 'deleteUser') {
       if (wipeData) {
-        // Cancella prima i dati collegati (RLS non si applica qui: usiamo adminClient)
         await adminClient.from('services').delete().eq('user_id', targetUserId)
         await adminClient.from('appointments').delete().eq('user_id', targetUserId)
         await adminClient.from('payments').delete().eq('user_id', targetUserId)
       }
       const { error } = await adminClient.auth.admin.deleteUser(targetUserId)
       if (error) throw error
-      return new Response(JSON.stringify({ ok: true }), { status: 200 })
+      return json({ ok: true })
     }
 
     if (action === 'resetUserPassword') {
-      // Nota: questo invalida la vecchia chiave di cifratura per quell'utente.
-      // Se wipeData è true, i vecchi record cifrati (ormai illeggibili) vengono rimossi.
       if (wipeData) {
         await adminClient.from('services').delete().eq('user_id', targetUserId)
         await adminClient.from('appointments').delete().eq('user_id', targetUserId)
@@ -76,11 +89,11 @@ Deno.serve(async (req) => {
         password: newPassword,
       })
       if (error) throw error
-      return new Response(JSON.stringify({ ok: true }), { status: 200 })
+      return json({ ok: true })
     }
 
-    return new Response(JSON.stringify({ error: 'Azione sconosciuta' }), { status: 400 })
+    return json({ error: 'Azione sconosciuta' }, 400)
   } catch (err) {
-    return new Response(JSON.stringify({ error: String(err) }), { status: 500 })
+    return json({ error: String(err) }, 500)
   }
 })

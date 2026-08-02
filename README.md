@@ -2,7 +2,7 @@
 
 Applicazione PWA per estetiste — gestione appuntamenti, listino prezzi e pagamenti con **cifratura end-to-end** AES-256-GCM.
 
-Backend: **Appwrite Cloud** (gratuito, progetti illimitati).
+Backend: **Supabase**.
 
 \---
 

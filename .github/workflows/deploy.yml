@@ -30,14 +30,10 @@ jobs:
 
       - name: Build
         env:
-          VITE_APPWRITE_ENDPOINT:           ${{ secrets.VITE_APPWRITE_ENDPOINT }}
-          VITE_APPWRITE_PROJECT_ID:         ${{ secrets.VITE_APPWRITE_PROJECT_ID }}
-          VITE_APPWRITE_DATABASE_ID:        ${{ secrets.VITE_APPWRITE_DATABASE_ID }}
-          VITE_APPWRITE_COL_SERVICES:       ${{ secrets.VITE_APPWRITE_COL_SERVICES }}
-          VITE_APPWRITE_COL_APPOINTMENTS:   ${{ secrets.VITE_APPWRITE_COL_APPOINTMENTS }}
-          VITE_APPWRITE_COL_PAYMENTS:       ${{ secrets.VITE_APPWRITE_COL_PAYMENTS }}
-          VITE_SUPERADMIN_EMAIL:            ${{ secrets.VITE_SUPERADMIN_EMAIL }}
-          VITE_BASE_PATH:                   ${{ secrets.VITE_BASE_PATH || '/' }}
+          VITE_SUPABASE_URL:      ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_SUPERADMIN_EMAIL:  ${{ secrets.VITE_SUPERADMIN_EMAIL }}
+          VITE_BASE_PATH:         ${{ secrets.VITE_BASE_PATH || '/' }}
         run: npm run build
 
       - uses: actions/upload-pages-artifact@v3

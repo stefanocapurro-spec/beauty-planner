@@ -100,6 +100,9 @@ export function AppointmentModal({ open, onClose, onSave, initial }) {
   const blank = {
     client_name: '', client_phone: '',
     appointment_date: format(new Date(), "yyyy-MM-dd'T'HH:mm"),
+    // service_id ora può contenere più ID separati da virgola (multi-selezione).
+    // service_name/service_price restano il "riassunto" (nomi uniti, totale)
+    // così il resto dell'app che li legge non cambia comportamento.
     service_id: '', service_name: '', service_price: '',
     notes: '', payment_status: 'pending',
     advance_amount: '', whatsapp_reminder: false,
@@ -141,19 +144,38 @@ export function AppointmentModal({ open, onClose, onSave, initial }) {
     }
   }
 
-  function selectService(id) {
-    const svc = services.find(s => s.id === id)
-    setForm(f => ({ ...f, service_id: id, service_name: svc?.name ?? '', service_price: svc?.price ?? '' }))
+  // ── Selezione multipla prestazioni ────────────────────────────────────
+  const selectedIds = form.service_id ? String(form.service_id).split(',').filter(Boolean) : []
+
+  function applySelection(ids) {
+    const selected = ids.map(id => services.find(s => s.id === id)).filter(Boolean)
+    setForm(f => ({
+      ...f,
+      service_id: ids.join(','),
+      service_name: selected.map(s => s.name).join(', '),
+      service_price: selected.reduce((sum, s) => sum + Number(s.price), 0),
+    }))
+  }
+
+  function toggleService(id) {
+    const next = selectedIds.includes(id)
+      ? selectedIds.filter(x => x !== id)
+      : [...selectedIds, id]
+    applySelection(next)
   }
 
   async function handleAddService(data) {
     const newSvc = await addService(data)
-    setForm(f => ({ ...f, service_id: newSvc.id, service_name: newSvc.name, service_price: newSvc.price }))
+    applySelection([...selectedIds, newSvc.id])
     setShowAddService(false)
   }
 
   async function handleSave(e) {
     e.preventDefault()
+    if (selectedIds.length === 0) {
+      toast.error('Seleziona almeno una prestazione')
+      return
+    }
     setBusy(true)
     try { await onSave(form); onClose() }
     finally { setBusy(false) }
@@ -207,10 +229,10 @@ export function AppointmentModal({ open, onClose, onSave, initial }) {
             value={form.appointment_date} onChange={field('appointment_date')} required />
         </Field>
 
-        {/* Prestazione */}
+        {/* Prestazioni — selezione multipla */}
         <div>
           <div className="flex items-center justify-between mb-1">
-            <label className="text-xs font-medium text-muted">💆‍♀️ Prestazione</label>
+            <label className="text-xs font-medium text-muted">💆‍♀️ Prestazioni</label>
             {!showAddService && (
               <button type="button" onClick={() => setShowAddService(true)}
                 className="flex items-center gap-1 text-xs font-medium transition-colors hover:opacity-80"
@@ -222,22 +244,29 @@ export function AppointmentModal({ open, onClose, onSave, initial }) {
 
           {!showAddService && (
             <>
-              <select className="input-base" value={form.service_id}
-                onChange={e => selectService(e.target.value)} required>
-                <option value="">Seleziona una prestazione…</option>
+              <div className="max-h-56 overflow-y-auto rounded-xl border border-theme divide-y divide-theme">
                 {Object.entries(grouped).map(([cat, svcs]) => (
-                  <optgroup key={cat} label={`${CATEGORY_ICONS[cat] || '🌸'} ${cat}`}>
+                  <div key={cat}>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-faint px-3 pt-2 pb-1 bg-surface-2 sticky top-0">
+                      {CATEGORY_ICONS[cat] || '🌸'} {cat}
+                    </p>
                     {svcs.map(s => (
-                      <option key={s.id} value={s.id}>
-                        {s.icon} {s.name} — €{s.price}
-                      </option>
+                      <label key={s.id}
+                        className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-surface-2 transition-colors">
+                        <input type="checkbox"
+                          checked={selectedIds.includes(s.id)}
+                          onChange={() => toggleService(s.id)}
+                          className="accent-[var(--c-primary)] w-4 h-4 flex-shrink-0" />
+                        <span className="text-sm flex-1 truncate text-body">{s.icon} {s.name}</span>
+                        <span className="text-xs text-muted flex-shrink-0">€{s.price}</span>
+                      </label>
                     ))}
-                  </optgroup>
+                  </div>
                 ))}
-              </select>
-              {form.service_price !== '' && (
-                <p className="text-xs mt-1" style={{ color: 'var(--c-primary)' }}>
-                  Prezzo: €{form.service_price}
+              </div>
+              {selectedIds.length > 0 && (
+                <p className="text-xs mt-1.5" style={{ color: 'var(--c-primary)' }}>
+                  {selectedIds.length} prestazion{selectedIds.length === 1 ? 'e' : 'i'} selezionat{selectedIds.length === 1 ? 'a' : 'e'} — Totale €{Number(form.service_price).toFixed(2)}
                 </p>
               )}
             </>

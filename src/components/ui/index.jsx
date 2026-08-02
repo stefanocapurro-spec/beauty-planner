@@ -1,5 +1,17 @@
+import { useEffect } from 'react'
+
 // ── Modal wrapper ─────────────────────────────────────────────────────────
 export function Modal({ open, onClose, children, maxWidth = 'max-w-lg' }) {
+  // Blocca lo scroll dello sfondo mentre il modale è aperto (necessario
+  // perché su iOS lo scroll del body sotto un elemento "fixed" può
+  // interferire con lo scroll interno del modale).
+  useEffect(() => {
+    if (!open) return
+    const original = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = original }
+  }, [open])
+
   if (!open) return null
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
@@ -8,7 +20,18 @@ export function Modal({ open, onClose, children, maxWidth = 'max-w-lg' }) {
         onClick={onClose}
       />
       <div
-        className={`relative bg-surface w-full ${maxWidth} rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[92vh] overflow-y-auto animate-slide-up`}
+        className={`relative bg-surface w-full ${maxWidth} rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-y-auto animate-slide-up`}
+        style={{
+          // dvh invece di vh: su iOS Safari 92vh viene calcolato includendo
+          // l'area coperta dalla barra degli indirizzi, facendo "credere" al
+          // modale che tutto il contenuto entri, mentre in realtà una parte
+          // è tagliata fuori e irraggiungibile. dvh usa l'altezza visibile reale.
+          maxHeight: '92dvh',
+          WebkitOverflowScrolling: 'touch',
+          overscrollBehavior: 'contain',
+          // evita che il pulsante Salva finisca sotto l'home indicator su iPhone
+          paddingBottom: 'env(safe-area-inset-bottom)',
+        }}
       >
         {children}
       </div>

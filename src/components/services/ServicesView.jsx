@@ -236,9 +236,6 @@ export function ServicesView() {
                 <span className="text-base">{CATEGORY_ICONS[cat] || '🌸'}</span>
                 <h2 className="text-xs font-semibold text-muted uppercase tracking-wider">{cat}</h2>
                 <div className="flex-1 h-px bg-[var(--c-border)]" />
-                <span className="text-xs text-faint">
-                  €{svcs.reduce((s, v) => s + Number(v.price), 0).toFixed(0)} tot.
-                </span>
               </div>
               <div className="space-y-1.5">
                 {svcs.map(s => (
